@@ -1,4 +1,5 @@
 #include "help.h"
+#include "validation.h"
 #include <stdio.h>
 #include <stdlib.h>
 #define CLI_IMPLEMENTATION
@@ -20,7 +21,7 @@ bool serve_handler(Context context)
 
 bool connect_handler(Context context)
 {
-    if(context.port == -1) {
+    if(!validate_port(context.port)) {
         ERRO("Please provide a valid port number");
         return false;
     }
@@ -65,7 +66,11 @@ int main(int argc, char** argv)
                 ctx.ip = strdup(optarg);
                 break;
             case ARG_PORT:
-                ctx.port = atoi(optarg); // TODO: validate
+                if(!validate_int(optarg)) {
+                    ERRO("Invalid port argument: `%s`", optarg);
+                    goto error;
+                }
+                ctx.port = atoi(optarg);
                 break;
             case ARG_ID:
                 ctx.id = strdup(optarg);
