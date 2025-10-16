@@ -30,8 +30,34 @@ void help()
     PTN("%sOPTIONS%s", ANSI_BOLD, ANSI_RESET);
     PTNI("-h --help         Prints this message");
     PTNI("-v --version      Prints the project version");
+    PTNI("-I --ip           Specify the ip of the server");
+    PTNI("-P --port         Specify the port of the server");
+    PTNI("-i --id           Specify the peer's id");
 
     PTN(" ");
     PTN("Written by KDesp73 (Konstantinos Despoinidis)");
 }
 
+void serve_help()
+{
+    PTN("%sUSAGE%s", ANSI_BOLD, ANSI_RESET);
+    PTNI("p2p serve <OPTIONS>...");
+    PTN(" ");
+
+    PTN("%sOPTIONS%s", ANSI_BOLD, ANSI_RESET);
+    PTNI("-h --help         Prints this message");
+    PTNI("-P --port         Specify the port of the server");
+}
+
+void connect_help()
+{
+    PTN("%sUSAGE%s", ANSI_BOLD, ANSI_RESET);
+    PTNI("p2p connect <OPTIONS>...");
+    PTN(" ");
+
+    PTN("%sOPTIONS%s", ANSI_BOLD, ANSI_RESET);
+    PTNI("-h --help         Prints this message");
+    PTNI("-I --ip           Specify the ip of the server");
+    PTNI("-P --port         Specify the port of the server");
+    PTNI("-i --id           Specify the peer's id");
+}
