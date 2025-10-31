@@ -3,11 +3,12 @@
 #include "validation.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #define CLI_IMPLEMENTATION
 #include "extern/cli.h"
 #include "extern/logging.h"
-#include "p2pipe/p2p.h"
-#include "version.h"
+#include "p2pipe/udp.h"
+#include "p2pipe/version.h"
 #include "cli.h"
 
 bool serve_handler(Context context) 
@@ -20,7 +21,7 @@ bool serve_handler(Context context)
     return !server(context.port);
 }
 
-bool connect_handler(Context context)
+bool listen_handler(Context context)
 {
     if(!validate_port(context.port)) {
         ERRO("Please provide a valid port number");
@@ -30,12 +31,24 @@ bool connect_handler(Context context)
         ERRO("Please provide an ip");
         return false;
     }
-    if(!context.id) {
-        ERRO("Please provide an id");
+
+    sleep(1);
+
+    return true;
+}
+
+bool talk_handler(Context context)
+{
+    if(!validate_port(context.port)) {
+        ERRO("Please provide a valid port number");
+        return false;
+    }
+    if(!context.ip) {
+        ERRO("Please provide an ip");
         return false;
     }
 
-    return !client(context.ip, context.port, context.id);
+    return true;
 }
 
 int main(int argc, char** argv)
@@ -45,7 +58,6 @@ int main(int argc, char** argv)
         cli_arg_new(ARG_VERSION, "version", "", no_argument),
         cli_arg_new(ARG_IP, "ip", "", required_argument),
         cli_arg_new(ARG_PORT, "port", "", required_argument),
-        cli_arg_new(ARG_ID, "id", "", required_argument),
         NULL
     );
     char* command_str = argc == 1 ? NULL : argv[1];
@@ -73,22 +85,15 @@ int main(int argc, char** argv)
                 }
                 ctx.port = atoi(optarg);
                 break;
-            case ARG_ID:
-                ctx.id = strdup(optarg);
-                break;
             default:
                 goto error;
         }
     }
     
-    metrics_init(METRICS_FILE);
-    Metrics metrics = {0};
-    metrics_start(&metrics);
-
     Dispatcher dispatcher = {0};
     set_handler(&dispatcher, COMMAND_SERVE, serve_handler);
-    set_handler(&dispatcher, COMMAND_LISTEN, connect_handler);
-    set_handler(&dispatcher, COMMAND_TALK, connect_handler);
+    set_handler(&dispatcher, COMMAND_LISTEN, listen_handler);
+    set_handler(&dispatcher, COMMAND_TALK, talk_handler);
 
     HandlerFunc handler = get_handler(&dispatcher, command);
     if(!handler) {
@@ -97,10 +102,6 @@ int main(int argc, char** argv)
         goto error;
     }
     if(!handler(ctx)) goto error;
-
-
-    metrics_end(&metrics);
-    metrics_write(metrics, METRICS_FILE);
 
 cleanup:
     cli_args_free(&args);

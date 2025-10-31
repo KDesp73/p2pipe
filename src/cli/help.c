@@ -33,7 +33,6 @@ void help()
     PTNI("-v --version      Prints the project version");
     PTNI("-I --ip           Specify the ip of the server");
     PTNI("-P --port         Specify the port of the server");
-    PTNI("-i --id           Specify the peer's id");
 
     PTN(" ");
     PTN("Written by KDesp73 (Konstantinos Despoinidis)");
@@ -58,7 +57,6 @@ void serve_help()
     PTNI("-h --help         Prints this message"); \
     PTNI("-I --ip           Specify the ip of the server"); \
     PTNI("-P --port         Specify the port of the server"); \
-    PTNI("-i --id           Specify the peer's id") \
 
 void talk_help() {
     client_help("talk");

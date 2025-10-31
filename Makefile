@@ -1,6 +1,6 @@
 # Compiler and flags
 CC = gcc
-CFLAGS = -Wall -Iinclude -fPIC -Werror
+CFLAGS = -Wall -Iinclude -fPIC -Werror -pthread
 LDFLAGS =
 
 # Directories

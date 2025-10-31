@@ -17,13 +17,11 @@ typedef enum {
    ARG_VERSION = 'v',
    ARG_IP = 'I',
    ARG_PORT = 'P',
-   ARG_ID = 'i'
 } CliArgs;
 
 typedef struct {
     char* ip;
     int port;
-    char* id;
     Command command;
 } Context;
 void context_init(Context* ctx, Command command);

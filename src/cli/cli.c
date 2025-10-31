@@ -25,7 +25,6 @@ void context_reset(Context* ctx)
     ctx->port = -1;
     ctx->command = COMMAND_NONE;
     ctx->ip = NULL;
-    ctx->id = NULL;
 }
 
 void context_free(Context* ctx)
@@ -34,10 +33,6 @@ void context_free(Context* ctx)
     if(ctx->ip) {
         free(ctx->ip);
         ctx->ip = NULL;
-    }
-    if(ctx->id) {
-        free(ctx->id);
-        ctx->id = NULL;
     }
 }
 
