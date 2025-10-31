@@ -5,9 +5,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define CSV_HEADER "packets_sent, packets_received, packets_lost, acks_lost, threads_used, start, end"
-#define METRICS_FMT "%zu, %zu, %zu, %zu, %zu, %lu, %lu"
+#define CSV_HEADER "packets_sent, packets_received, packets_lost, acks_lost, threads_used, start, end\n"
+#define METRICS_FMT "%zu, %zu, %zu, %zu, %zu, %lu, %lu\n"
 #define METRICS_ARGS(m) m.packets_sent, m.packets_received, m.packets_lost, m.acks_lost, m.threads_used, m.start, m.end 
+
+#define METRICS_FILE "metrics.csv"
 
 typedef struct {
     size_t packets_sent;
@@ -21,5 +23,7 @@ typedef struct {
 
 bool metrics_init(const char* path);
 bool metrics_write(Metrics metrics, const char* path);
+void metrics_start(Metrics* metrics);
+void metrics_end(Metrics* metrics);
 
 #endif // METRICS_H

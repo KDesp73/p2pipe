@@ -1,4 +1,5 @@
 #include "help.h"
+#include "p2pipe/metrics.h"
 #include "validation.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -79,6 +80,10 @@ int main(int argc, char** argv)
                 goto error;
         }
     }
+    
+    metrics_init(METRICS_FILE);
+    Metrics metrics = {0};
+    metrics_start(&metrics);
 
     Dispatcher dispatcher = {0};
     set_handler(&dispatcher, COMMAND_SERVE, serve_handler);
@@ -92,6 +97,10 @@ int main(int argc, char** argv)
         goto error;
     }
     if(!handler(ctx)) goto error;
+
+
+    metrics_end(&metrics);
+    metrics_write(metrics, METRICS_FILE);
 
 cleanup:
     cli_args_free(&args);

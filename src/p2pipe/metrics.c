@@ -2,18 +2,23 @@
 #include "extern/logging.h"
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
+#include <unistd.h>
 
 bool metrics_init(const char* path)
 {
-    // TODO: check if file already exists
+    if (access(path, F_OK) == 0)
+        return true; // File exists
+
     FILE* fd = fopen(path, "w");
-    if(!fd) {
+    if (!fd) {
         ERRO("Could not open file `%s` for writing", path);
         return false;
     }
 
-    if(!fwrite(CSV_HEADER, sizeof(CSV_HEADER), 1, fd)) {
-        ERRO("Failed writing csv header");
+    if (fwrite(CSV_HEADER, 1, strlen(CSV_HEADER), fd) != strlen(CSV_HEADER)) {
+        ERRO("Failed writing CSV header");
+        fclose(fd);
         return false;
     }
 
@@ -24,15 +29,18 @@ bool metrics_init(const char* path)
 bool metrics_write(Metrics metrics, const char* path)
 {
     FILE* fd = fopen(path, "a");
-    if(!fd) {
+    if (!fd) {
         ERRO("Could not open file `%s` for writing", path);
         return false;
     }
-    
+
     char buffer[1024];
-    sprintf(buffer, METRICS_FMT, METRICS_ARGS(metrics));
-    if(!fwrite(buffer, strlen(buffer), 1, fd)) {
+    snprintf(buffer, sizeof(buffer), METRICS_FMT, METRICS_ARGS(metrics));
+
+    size_t len = strlen(buffer);
+    if (fwrite(buffer, 1, len, fd) != len) {
         ERRO("Could not write record");
+        fclose(fd);
         return false;
     }
 
@@ -40,3 +48,12 @@ bool metrics_write(Metrics metrics, const char* path)
     return true;
 }
 
+void metrics_start(Metrics* metrics)
+{
+    metrics->start = time(NULL);
+}
+
+void metrics_end(Metrics* metrics)
+{
+    metrics->end = time(NULL);
+}
