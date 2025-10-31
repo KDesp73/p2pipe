@@ -33,7 +33,7 @@ endif
 
 # Source and object files
 SRC_LIB_FILES := $(shell find $(SRC_DIR)/p2pipe -name '*.c')
-SRC_FILES := $(shell find $(SRC_DIR)/cli -name '*.c')
+SRC_FILES := $(shell find $(SRC_DIR) -name '*.c')
 OBJ_LIB_FILES = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRC_LIB_FILES))
 OBJ_FILES = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRC_FILES))
 
