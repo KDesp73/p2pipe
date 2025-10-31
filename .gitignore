@@ -5,4 +5,6 @@ compile_commands.json
 *.o
 
 p2pipe
+!src/p2pipe
+!include/p2pipe
 libp2pipe.*
