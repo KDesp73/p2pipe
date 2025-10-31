@@ -5,13 +5,13 @@
 #define CLI_IMPLEMENTATION
 #include "extern/cli.h"
 #include "extern/logging.h"
-#include "p2p.h"
+#include "p2pipe/p2p.h"
 #include "version.h"
 #include "cli.h"
 
 bool serve_handler(Context context) 
 {
-    if(context.port == -1) {
+    if(!validate_port(context.port)) {
         ERRO("Please provide a valid port number");
         return false;
     }
@@ -82,7 +82,8 @@ int main(int argc, char** argv)
 
     Dispatcher dispatcher = {0};
     set_handler(&dispatcher, COMMAND_SERVE, serve_handler);
-    set_handler(&dispatcher, COMMAND_CONNECT, connect_handler);
+    set_handler(&dispatcher, COMMAND_LISTEN, connect_handler);
+    set_handler(&dispatcher, COMMAND_TALK, connect_handler);
 
     HandlerFunc handler = get_handler(&dispatcher, command);
     if(!handler) {
@@ -95,7 +96,6 @@ int main(int argc, char** argv)
 cleanup:
     cli_args_free(&args);
     context_free(&ctx);
-
     return 0;
 
 error:

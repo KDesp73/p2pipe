@@ -5,7 +5,8 @@
 
 typedef enum {
     COMMAND_SERVE,
-    COMMAND_CONNECT,
+    COMMAND_LISTEN,
+    COMMAND_TALK,
     COMMAND_NONE,
 } Command;
 #define COMMAND_COUNT COMMAND_NONE

@@ -22,8 +22,9 @@ void help()
     PTN(" ");
 
     PTN("%sCOMMANDS%s", ANSI_BOLD, ANSI_RESET);
-    PTNI("serve             Tells the executable to act as a server");
-    PTNI("connect           Connect to a server");
+    PTNI("serve             Act as a server");
+    PTNI("listen            Act as a receiver");
+    PTNI("talk              Act as a sender");
 
     PTN(" ");
 
@@ -49,15 +50,20 @@ void serve_help()
     PTNI("-P --port         Specify the port of the server");
 }
 
-void connect_help()
-{
-    PTN("%sUSAGE%s", ANSI_BOLD, ANSI_RESET);
-    PTNI("p2p connect <OPTIONS>...");
-    PTN(" ");
+#define client_help(cmd) \
+    PTN("%sUSAGE%s", ANSI_BOLD, ANSI_RESET); \
+    PTNI("p2p %s <OPTIONS>...", cmd); \
+    PTN(" "); \
+    PTN("%sOPTIONS%s", ANSI_BOLD, ANSI_RESET); \
+    PTNI("-h --help         Prints this message"); \
+    PTNI("-I --ip           Specify the ip of the server"); \
+    PTNI("-P --port         Specify the port of the server"); \
+    PTNI("-i --id           Specify the peer's id") \
 
-    PTN("%sOPTIONS%s", ANSI_BOLD, ANSI_RESET);
-    PTNI("-h --help         Prints this message");
-    PTNI("-I --ip           Specify the ip of the server");
-    PTNI("-P --port         Specify the port of the server");
-    PTNI("-i --id           Specify the peer's id");
+void talk_help() {
+    client_help("talk");
+}
+
+void listen_help() {
+    client_help("listen");
 }

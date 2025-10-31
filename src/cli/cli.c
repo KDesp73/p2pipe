@@ -7,7 +7,8 @@ Command parse_command(const char* str)
     if(!str) return COMMAND_NONE;
 
     if(!strcmp("serve", str)) return COMMAND_SERVE;
-    else if(!strcmp("connect", str)) return COMMAND_CONNECT;
+    else if(!strcmp("listen", str)) return COMMAND_LISTEN;
+    else if(!strcmp("talk", str)) return COMMAND_TALK;
 
     return COMMAND_NONE;
 }

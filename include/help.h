@@ -5,7 +5,8 @@
 
 void help();
 void serve_help();
-void connect_help();
+void listen_help();
+void talk_help();
 
 static inline void run_help(Command command)
 {
@@ -13,8 +14,11 @@ static inline void run_help(Command command)
     case COMMAND_SERVE:
         serve_help();
         break;
-    case COMMAND_CONNECT:
-        connect_help();
+    case COMMAND_LISTEN:
+        listen_help();
+        break;
+    case COMMAND_TALK:
+        talk_help();
         break;
     case COMMAND_NONE:
     default:

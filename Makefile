@@ -9,12 +9,12 @@ INCLUDE_DIR = include
 BUILD_DIR = build
 DIST_DIR = dist
 
-LIBRARY_NAME = p2p
+LIBRARY_NAME = p2pipe
 SO_NAME = lib$(LIBRARY_NAME).so
 A_NAME = lib$(LIBRARY_NAME).a
 
 # Target and version info
-TARGET = p2p
+TARGET = p2pipe
 version_file = include/version.h
 VERSION_MAJOR = $(shell sed -n -e 's/\#define VERSION_MAJOR \([0-9]*\)/\1/p' $(version_file))
 VERSION_MINOR = $(shell sed -n -e 's/\#define VERSION_MINOR \([0-9]*\)/\1/p' $(version_file))
@@ -32,7 +32,9 @@ else
 endif
 
 # Source and object files
-SRC_FILES := $(shell find $(SRC_DIR) -name '*.c' ! -name 'main.c')
+SRC_LIB_FILES := $(shell find $(SRC_DIR)/p2pipe -name '*.c')
+SRC_FILES := $(shell find $(SRC_DIR)/cli -name '*.c')
+OBJ_LIB_FILES = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRC_LIB_FILES))
 OBJ_FILES = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRC_FILES))
 
 # Default target
@@ -57,7 +59,7 @@ check_tools: ## Check if necessary tools are available
 
 $(BUILD_DIR): ## Create the build directory if it doesn't exist
 	@echo "[INFO] Creating build directory"
-	mkdir -p $(BUILD_DIR)
+	mkdir -p $(BUILD_DIR)/p2pipe
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c ## Compile source files with progress
 	$(eval counter=$(shell echo $$(($(counter)+1))))
@@ -66,17 +68,17 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c ## Compile source files with progress
 
 $(TARGET): $(BUILD_DIR) static ## Build executable using static library
 	@echo "[INFO] Building executable: $(TARGET)"
-	@$(CC) src/main.c -o $(TARGET) -L. -l:$(A_NAME) $(LDFLAGS) -Iinclude
+	@$(CC) $(SRC_FILES) -o $(TARGET) -L. -l:$(A_NAME) $(LDFLAGS) -Iinclude
 
 .PHONY: shared
-shared: $(BUILD_DIR) $(OBJ_FILES) ## Build shared library
+shared: $(BUILD_DIR) $(OBJ_LIB_FILES) ## Build shared library
 	@echo "[INFO] Building shared library: $(SO_NAME)"
-	@$(CC) -shared $(CFLAGS) -o $(SO_NAME) $(OBJ_FILES)
+	@$(CC) -shared $(CFLAGS) -o $(SO_NAME) $(OBJ_LIB_FILES)
 
 .PHONY: static
-static: $(BUILD_DIR) $(OBJ_FILES) ## Build static library
+static: $(BUILD_DIR) $(OBJ_LIB_FILES) ## Build static library
 	@echo "[INFO] Building static library: $(A_NAME)"
-	@$(AR) rcs $(A_NAME) $(OBJ_FILES)
+	@$(AR) rcs $(A_NAME) $(OBJ_LIB_FILES)
 
 .PHONY: clean
 clean: ## Remove all build files and the executable
