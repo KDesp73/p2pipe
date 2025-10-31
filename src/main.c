@@ -8,6 +8,7 @@
 #include "extern/cli.h"
 #include "extern/logging.h"
 #include "p2pipe/udp.h"
+#include "p2pipe/pipe.h"
 #include "p2pipe/version.h"
 #include "cli.h"
 
@@ -32,7 +33,28 @@ bool listen_handler(Context context)
         return false;
     }
 
-    sleep(1);
+    Pipe pipe = {0};
+    int sock = pipe_rcv_open(&pipe,
+            context.ip, 
+            context.port, 
+            (context.capacity) ? context.capacity : 25);
+    if(sock <= 0) {
+        pipe_rcv_close(&pipe);
+        return false;
+    }
+
+    INFO("Listening for packets...");
+
+    while (true) {
+        if (!pipe_read(&pipe, 1)) {
+            continue;
+        }
+
+        Packet* pkt = &pipe.buffer[(pipe.count - 1) % pipe.capacity];
+        INFO("Packet received: %.32s", *pkt);
+    }
+
+    pipe_rcv_close(&pipe);
 
     return true;
 }
@@ -48,6 +70,19 @@ bool talk_handler(Context context)
         return false;
     }
 
+    Pipe pipe = {0};
+    int sock = pipe_snd_open(&pipe,
+            context.ip, 
+            context.port, 
+            (context.capacity) ? context.capacity : 25);
+    if(sock <= 0) return false;
+
+    INFO("Sending packets...");
+
+    pipe_write(&pipe, "Hello world");
+
+    pipe_rcv_close(&pipe);
+
     return true;
 }
 
@@ -58,6 +93,7 @@ int main(int argc, char** argv)
         cli_arg_new(ARG_VERSION, "version", "", no_argument),
         cli_arg_new(ARG_IP, "ip", "", required_argument),
         cli_arg_new(ARG_PORT, "port", "", required_argument),
+        cli_arg_new(ARG_CAPACITY, "capacity", "", required_argument),
         NULL
     );
     char* command_str = argc == 1 ? NULL : argv[1];
@@ -84,6 +120,13 @@ int main(int argc, char** argv)
                     goto error;
                 }
                 ctx.port = atoi(optarg);
+                break;
+            case ARG_CAPACITY:
+                if(!validate_int(optarg) && atoi(optarg) <= 0) {
+                    ERRO("Invalid capacity: `%s`", optarg);
+                    goto error;
+                }
+                ctx.capacity = atoi(optarg);
                 break;
             default:
                 goto error;

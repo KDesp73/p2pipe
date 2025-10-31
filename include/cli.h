@@ -2,6 +2,7 @@
 #define CLI_CONFIG_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 typedef enum {
     COMMAND_SERVE,
@@ -17,11 +18,13 @@ typedef enum {
    ARG_VERSION = 'v',
    ARG_IP = 'I',
    ARG_PORT = 'P',
+   ARG_CAPACITY = 'C',
 } CliArgs;
 
 typedef struct {
     char* ip;
     int port;
+    size_t capacity;
     Command command;
 } Context;
 void context_init(Context* ctx, Command command);

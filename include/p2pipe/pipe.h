@@ -1,9 +1,12 @@
 #ifndef PIPE_H
 #define PIPE_H
 
-#include "p2pipe/packet.h"
+#include <netinet/in.h>
 #include <stdbool.h>
 #include <stddef.h>
+
+#define PACKET_SIZE 1024
+typedef char Packet[PACKET_SIZE];
 
 typedef enum {
     MODE_SND,
@@ -13,16 +16,18 @@ typedef enum {
 typedef struct {
     PipeMode mode;
     Packet* buffer;
-    size_t size;
+    size_t count;
     size_t capacity;
+    int sock_fd;
+    struct sockaddr_in peer_addr;
 } Pipe;
 
-int pipe_rcv_open(Pipe* pipe, size_t capacity);
-bool pipe_read(Pipe* pipe, size_t n);
+int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity);
+bool pipe_read(Pipe* pipe, size_t n_packets);
 void pipe_rcv_close(Pipe* pipe);
 
-int pipe_snd_open(Pipe* pipe, size_t capacity);
-bool pipe_write(Pipe* pipe, char* buf, size_t len);
+int pipe_snd_open(Pipe* pipe, const char* ip, size_t port, size_t capacity);
+bool pipe_write(Pipe* pipe, Packet packet);
 bool pipe_flush(Pipe* pipe);
 void pipe_snd_close(Pipe* pipe);
 

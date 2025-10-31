@@ -23,6 +23,7 @@ void context_reset(Context* ctx)
 {
     context_free(ctx);
     ctx->port = -1;
+    ctx->capacity = 0;
     ctx->command = COMMAND_NONE;
     ctx->ip = NULL;
 }
