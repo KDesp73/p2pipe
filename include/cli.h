@@ -19,12 +19,16 @@ typedef enum {
    ARG_IP = 'I',
    ARG_PORT = 'P',
    ARG_CAPACITY = 'C',
+   ARG_SRC = 's',
+   ARG_DST = 'd',
 } CliArgs;
 
 typedef struct {
     char* ip;
     int port;
     size_t capacity;
+    char* src;
+    char* dst;
     Command command;
 } Context;
 void context_init(Context* ctx, Command command);

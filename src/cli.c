@@ -1,6 +1,7 @@
 #include "cli.h"
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 Command parse_command(const char* str)
 {
@@ -26,6 +27,8 @@ void context_reset(Context* ctx)
     ctx->capacity = 0;
     ctx->command = COMMAND_NONE;
     ctx->ip = NULL;
+    ctx->src = NULL;
+    ctx->dst= NULL;
 }
 
 void context_free(Context* ctx)
@@ -34,6 +37,14 @@ void context_free(Context* ctx)
     if(ctx->ip) {
         free(ctx->ip);
         ctx->ip = NULL;
+    }
+    if(ctx->src) {
+        free(ctx->src);
+        ctx->src = NULL;
+    }
+    if(ctx->dst) {
+        free(ctx->dst);
+        ctx->dst = NULL;
     }
 }
 

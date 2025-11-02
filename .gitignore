@@ -9,3 +9,4 @@ p2pipe
 !include/p2pipe
 libp2pipe.*
 metrics.csv
+*.txt

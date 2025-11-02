@@ -33,6 +33,8 @@ void help()
     PTNI("-v --version      Prints the project version");
     PTNI("-I --ip           Specify the ip of the server");
     PTNI("-P --port         Specify the port of the server");
+    PTNI("-s --src          Specify the source file");
+    PTNI("-d --dst          Specify the destination file");
 
     PTN(" ");
     PTN("Written by KDesp73 (Konstantinos Despoinidis)");
@@ -60,8 +62,10 @@ void serve_help()
 
 void talk_help() {
     client_help("talk");
+    PTNI("-s --src          Specify the source file");
 }
 
 void listen_help() {
     client_help("listen");
+    PTNI("-d --dst          Specify the destination file");
 }

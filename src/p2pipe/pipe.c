@@ -1,8 +1,11 @@
 #include "p2pipe/pipe.h"
 #include "extern/logging.h"
+#include "futils.h"
+#include "p2pipe/packet.h"
 #include "p2pipe/udp.h"
 #include <arpa/inet.h>
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,12 +19,13 @@ static void pipe_init(Pipe* pipe, size_t capacity)
         return;
     }
     pipe->capacity = capacity;
+    pipe->count = 0;
 }
 
-static int pipe_handshake(Pipe* pipe, const char* ip, size_t port, size_t capacity)
+static int pipe_handshake(Pipe* pipe, const char* ip, size_t port, size_t capacity, PipeMode mode)
 {
     char payload[512];
-    snprintf(payload, sizeof(payload), "BUF=%zu PROTO=1", capacity);
+    snprintf(payload, sizeof(payload), "BUF=%zu PROTO=1 TYPE=%s", capacity, mode == MODE_SND ? "SND" : "RCV");
 
     char buf[1024];
     ssize_t n;
@@ -51,7 +55,7 @@ static int pipe_handshake(Pipe* pipe, const char* ip, size_t port, size_t capaci
             struct sockaddr_storage from;
             socklen_t fromlen = sizeof(from);
 
-            struct timeval tv = { .tv_sec = 15, .tv_usec = 0 }; // wait up to 15 seconds
+            struct timeval tv = { .tv_sec = 60, .tv_usec = 0 };
             fd_set rfds;
             FD_ZERO(&rfds);
             FD_SET(sock, &rfds);
@@ -119,40 +123,58 @@ int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity)
     pipe_init(pipe, capacity);
     pipe->mode = MODE_RCV;
 
-    return pipe_handshake(pipe, ip, port, capacity);
+    return pipe_handshake(pipe, ip, port, capacity, MODE_RCV);
 }
 
-bool pipe_read(Pipe* pipe, size_t n)
+bool pipe_read(Pipe* pipe, size_t n_bytes, const char* dst)
 {
     if (!pipe || pipe->mode != MODE_RCV || pipe->sock_fd < 0)
         return false;
 
-    if (n > pipe->capacity)
-        n = pipe->capacity;
-
+    size_t total_read = 0;
     struct sockaddr_in src_addr;
     socklen_t addrlen = sizeof(src_addr);
 
-    ssize_t bytes = recvfrom(pipe->sock_fd,
-                             pipe->buffer[pipe->count % pipe->capacity],
-                             PACKET_SIZE, 0,
-                             (struct sockaddr*)&src_addr, &addrlen);
-
-    if (bytes < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
+    while (total_read < n_bytes) {
+        uint8_t buf[PACKET_BUFFER_SIZE + 9]; // 1 + 4 + 4 + data
+        ssize_t bytes = recvfrom(pipe->sock_fd,
+                                 buf,
+                                 sizeof(buf),
+                                 0,
+                                 (struct sockaddr*)&src_addr,
+                                 &addrlen);
+        if (bytes < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                break;
+            perror("recvfrom");
             return false;
-        perror("recvfrom");
-        return false;
+        }
+
+        if (bytes == 0)
+            break;
+
+        Packet* packet = &pipe->buffer[pipe->count % pipe->capacity];
+        packet_deserialize(packet, buf, (size_t)bytes);
+
+        if(packet->signals & SIGNAL_END) {
+            INFO("Received END signal");
+            return true;
+        }
+
+        // NOTE: should be removed. Should implement some kind of storage
+        append_packet(packet, dst);
+
+        pipe->count++;
+        total_read += packet->len;
+
+        INFO("Received packet #%u: %u bytes from %s:%d",
+            packet->seq,
+            (unsigned)packet->len,
+            inet_ntoa(src_addr.sin_addr),
+            ntohs(src_addr.sin_port));
     }
 
-    pipe->count++;
-
-    printf("[INFO] Received %zd bytes from %s:%d\n",
-           bytes,
-           inet_ntoa(src_addr.sin_addr),
-           ntohs(src_addr.sin_port));
-
-    return true;
+    return total_read > 0;
 }
 
 void pipe_rcv_close(Pipe* pipe)
@@ -180,27 +202,61 @@ int pipe_snd_open(Pipe* pipe, const char* ip, size_t port, size_t capacity)
     pipe_init(pipe, capacity);
     pipe->mode = MODE_SND;
 
-    return pipe_handshake(pipe, ip, port, capacity);
+    return pipe_handshake(pipe, ip, port, capacity, MODE_SND);
 }
 
-bool pipe_write(Pipe* pipe, Packet packet)
+static bool pipe_write_packet(Pipe* pipe, const Packet* packet)
+{
+    if (!pipe || !packet) return false;
+
+    uint8_t buf[sizeof(Packet)];
+    size_t len = packet_serialize(packet, buf, sizeof(buf));
+    if (len == 0) return false;
+
+    ssize_t sent = sendto(pipe->sock_fd, buf, len, 0,
+                          (struct sockaddr*)&pipe->peer_addr,
+                          sizeof(pipe->peer_addr));
+    return sent == len;
+}
+
+bool pipe_write(Pipe* pipe, void* payload, size_t len)
 {
     if (!pipe || pipe->mode != MODE_SND || pipe->sock_fd < 0)
         return false;
 
-    ssize_t sent = sendto(pipe->sock_fd,
-                          packet,
-                          PACKET_SIZE,
-                          0,
-                          (struct sockaddr*)&pipe->peer_addr,
-                          sizeof(pipe->peer_addr));
+    uint8_t* data = payload;
+    size_t offset = 0;
+    uint32_t seq = 0;
 
-    if (sent != PACKET_SIZE) {
-        perror("sendto");
-        return false;
+    while (offset < len) {
+        Packet packet = {0};
+        packet.signals = SIGNAL_PAYLOAD;
+        packet.seq = seq++;
+        packet.len = (len - offset) < PACKET_BUFFER_SIZE ? (len - offset) : PACKET_BUFFER_SIZE;
+        memcpy(packet.data, data + offset, packet.len);
+
+        pipe->buffer[pipe->count++] = packet;
+
+        uint8_t buf[sizeof(Packet)];
+        size_t buf_len = packet_serialize(&packet, buf, sizeof(buf));
+        if (buf_len == 0) return false;
+
+        ssize_t sent = sendto(pipe->sock_fd, buf, buf_len, 0,
+                              (struct sockaddr*)&pipe->peer_addr,
+                              sizeof(pipe->peer_addr));
+        if (sent != buf_len) {
+            perror("sendto");
+            return false;
+        }
+
+        INFO("Sent packet #%u: %u bytes to %s:%d", packet.seq, packet.len, 
+                inet_ntoa(pipe->peer_addr.sin_addr),
+                ntohs(pipe->peer_addr.sin_port));
+
+        offset += packet.len;
+        pipe->count++;
     }
 
-    pipe->count++;
     return true;
 }
 
@@ -214,6 +270,12 @@ void pipe_snd_close(Pipe* pipe)
 {
     if (!pipe) return;
 
+    if(!pipe_write_packet(pipe, &PACKET_END)) {
+        WARN("END signal could was not send. Communication might have already ended");
+    }
+
+    // Cleanup
+
     if (pipe->sock_fd >= 0) {
         close(pipe->sock_fd);
         pipe->sock_fd = -1;
@@ -226,5 +288,5 @@ void pipe_snd_close(Pipe* pipe)
 
     pipe->count = 0;
     pipe->capacity = 0;
-    printf("[INFO] Pipe sender closed\n");
+    INFO("Pipe sender closed");
 }

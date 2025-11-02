@@ -1,8 +1,11 @@
+#include "futils.h"
 #include "help.h"
-#include "p2pipe/metrics.h"
+#include "futils.h"
 #include "validation.h"
+#include <bits/getopt_core.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #define CLI_IMPLEMENTATION
 #include "extern/cli.h"
@@ -24,34 +27,33 @@ bool serve_handler(Context context)
 
 bool listen_handler(Context context)
 {
-    if(!validate_port(context.port)) {
+    if (!validate_port(context.port)) {
         ERRO("Please provide a valid port number");
         return false;
     }
-    if(!context.ip) {
+    if (!context.ip) {
         ERRO("Please provide an ip");
+        return false;
+    }
+    if (!context.dst) {
+        ERRO("Please specify a destination file");
         return false;
     }
 
     Pipe pipe = {0};
-    int sock = pipe_rcv_open(&pipe,
-            context.ip, 
-            context.port, 
-            (context.capacity) ? context.capacity : 25);
-    if(sock <= 0) {
+    int sock = pipe_rcv_open(&pipe, context.ip, context.port,
+                             context.capacity ? context.capacity : 25);
+    if (sock <= 0) {
         pipe_rcv_close(&pipe);
         return false;
     }
 
     INFO("Listening for packets...");
 
-    while (true) {
-        if (!pipe_read(&pipe, 1)) {
-            continue;
-        }
-
-        Packet* pkt = &pipe.buffer[(pipe.count - 1) % pipe.capacity];
-        INFO("Packet received: %.32s", *pkt);
+    if (!pipe_read(&pipe, PACKET_BUFFER_SIZE * pipe.capacity, context.dst)) {
+        ERRO("Could not read packets");
+        pipe_rcv_close(&pipe);
+        return false;
     }
 
     pipe_rcv_close(&pipe);
@@ -61,27 +63,48 @@ bool listen_handler(Context context)
 
 bool talk_handler(Context context)
 {
-    if(!validate_port(context.port)) {
+    if (!validate_port(context.port)) {
         ERRO("Please provide a valid port number");
         return false;
     }
-    if(!context.ip) {
+    if (!context.ip) {
         ERRO("Please provide an ip");
+        return false;
+    }
+    if (!context.src) {
+        ERRO("Please specify a source file");
         return false;
     }
 
     Pipe pipe = {0};
-    int sock = pipe_snd_open(&pipe,
-            context.ip, 
-            context.port, 
-            (context.capacity) ? context.capacity : 25);
-    if(sock <= 0) return false;
+    int sock = pipe_snd_open(&pipe, context.ip, context.port,
+                             context.capacity ? context.capacity : 25);
+    if (sock <= 0) {
+        pipe_snd_close(&pipe);
+        return false;
+    }
 
     INFO("Sending packets...");
 
-    pipe_write(&pipe, "Hello world");
+    void* buffer = NULL;
+    size_t len = 0;
+    if (!read_file_bytes(context.src, &buffer, &len)) {
+        ERRO("Failed to read source file: %s", context.src);
+        pipe_snd_close(&pipe);
+        return false;
+    }
 
-    pipe_rcv_close(&pipe);
+    if (!pipe_write(&pipe, buffer, len)) {
+        ERRO("Failed sending payload from '%s'", context.src);
+        free(buffer);
+        pipe_snd_close(&pipe);
+        return false;
+    }
+
+    INFO("Sent %zu bytes total from '%s'", len, context.src);
+
+    free(buffer);
+    pipe_snd_close(&pipe);
 
     return true;
 }
@@ -94,6 +117,8 @@ int main(int argc, char** argv)
         cli_arg_new(ARG_IP, "ip", "", required_argument),
         cli_arg_new(ARG_PORT, "port", "", required_argument),
         cli_arg_new(ARG_CAPACITY, "capacity", "", required_argument),
+        cli_arg_new(ARG_SRC, "src", "", required_argument),
+        cli_arg_new(ARG_DST, "dst", "", required_argument),
         NULL
     );
     char* command_str = argc == 1 ? NULL : argv[1];
@@ -127,6 +152,12 @@ int main(int argc, char** argv)
                     goto error;
                 }
                 ctx.capacity = atoi(optarg);
+                break;
+            case ARG_SRC:
+                ctx.src = strdup(optarg);
+                break;
+            case ARG_DST:
+                ctx.dst = strdup(optarg);
                 break;
             default:
                 goto error;
