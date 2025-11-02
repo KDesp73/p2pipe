@@ -3,6 +3,7 @@
 #include "futils.h"
 #include "p2pipe/metrics.h"
 #include "p2pipe/packet.h"
+#include "p2pipe/storage.h"
 #include "p2pipe/udp.h"
 #include <arpa/inet.h>
 #include <errno.h>
@@ -180,8 +181,7 @@ bool pipe_read(Pipe* pipe, size_t n_bytes, const char* dst)
             return true;
         }
 
-        // NOTE: should be removed. Should implement some kind of storage
-        append_packet(packet, dst);
+        storage_append(&storage, packet);
 
         pipe->count++;
         total_read += packet->len;

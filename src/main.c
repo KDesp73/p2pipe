@@ -2,6 +2,7 @@
 #include "help.h"
 #include "futils.h"
 #include "p2pipe/metrics.h"
+#include "p2pipe/storage.h"
 #include "validation.h"
 #include <bits/getopt_core.h>
 #include <stdio.h>
@@ -15,6 +16,8 @@
 #include "p2pipe/pipe.h"
 #include "p2pipe/version.h"
 #include "cli.h"
+
+#define DEFAULT_CAPACITY 25
 
 bool serve_handler(Context context) 
 {
@@ -41,9 +44,11 @@ bool listen_handler(Context context)
         return false;
     }
 
+    storage_init(&storage, DEFAULT_CAPACITY);
+
     Pipe pipe = {0};
     int sock = pipe_rcv_open(&pipe, context.ip, context.port,
-                             context.capacity ? context.capacity : 25);
+                             context.capacity ? context.capacity : DEFAULT_CAPACITY);
     if (sock <= 0) {
         pipe_rcv_close(&pipe);
         return false;
@@ -54,10 +59,14 @@ bool listen_handler(Context context)
     if (!pipe_read(&pipe, PACKET_BUFFER_SIZE * pipe.capacity, context.dst)) {
         ERRO("Could not read packets");
         pipe_rcv_close(&pipe);
+        storage_free(&storage);
         return false;
     }
 
     pipe_rcv_close(&pipe);
+
+    storage_export(&storage, context.dst);
+    storage_free(&storage);
 
     return true;
 }
@@ -112,11 +121,12 @@ bool talk_handler(Context context)
 
 
 Metrics metrics;
+Storage storage;
 int main(int argc, char** argv)
 {
     metrics_init(&metrics, METRICS_FILE);
     metrics_start(&metrics);
-    
+
     cli_args_t args = cli_args_make(
         cli_arg_new(ARG_HELP, "help", "", no_argument),
         cli_arg_new(ARG_VERSION, "version", "", no_argument),
@@ -194,7 +204,9 @@ cleanup:
     return 0;
 
 error:
+    metrics_free(&metrics);
     cli_args_free(&args);
     context_free(&ctx);
+    storage_free(&storage);
     return 1;
 }
