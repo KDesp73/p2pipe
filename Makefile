@@ -113,5 +113,11 @@ help: ## Show this help message
 verbose: CFLAGS += -DVERBOSE
 verbose: all ## Build the project in verbose mode
 
+.PHONY: autocomplete
+autocomplete: ## Generate autocomplete scripts for bash, zsh and fish
+	complgen  --zsh ./docs/autocomplete/p2pipe.zsh  ./docs/autocomplete/p2pipe.usage
+	complgen --bash ./docs/autocomplete/p2pipe.bash ./docs/autocomplete/p2pipe.usage
+	complgen --fish ./docs/autocomplete/p2pipe.fish ./docs/autocomplete/p2pipe.usage
+
 # Phony targets to avoid conflicts with file names
 .PHONY: all clean distclean install uninstall dist compile_commands.json help check_tools verbose

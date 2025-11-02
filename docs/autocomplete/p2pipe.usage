@@ -1,0 +1,25 @@
+p2pipe <COMMANDS> | [<OPTIONS>];
+
+<COMMANDS> ::= (serve <SERVER-OPTIONS>) "Act as a server"
+			 | (listen <LISTEN-OPTIONS>) "Act as a receiver" 
+			 | (talk <TALK-OPTIONS>) "Act as a sender"
+			 ;
+
+<OPTIONS> ::= (-h || --help) "Prints the help message"
+			| (-v || --version) "Prints the project version"
+			;
+
+<SERVER-OPTIONS> ::= (--port) "Specify the port of the server";
+
+<CLIENT-OPTIONS> ::= <SERVER-OPTIONS>
+                   | (--ip) "Specify the ip of the server"
+                   | (--help) "Prints the help message"
+                   ;
+
+<LISTEN-OPTIONS> ::= <CLIENT-OPTIONS>
+                   | (--dst <PATH>) "Specify the destination file"
+                   ;
+
+<TALK-OPTIONS> ::= <CLIENT-OPTIONS>
+                   | (--src <PATH>) "Specify the source file"
+                   ;
