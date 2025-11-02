@@ -1,6 +1,7 @@
 #include "p2pipe/pipe.h"
 #include "extern/logging.h"
 #include "futils.h"
+#include "p2pipe/metrics.h"
 #include "p2pipe/packet.h"
 #include "p2pipe/udp.h"
 #include <arpa/inet.h>
@@ -42,6 +43,7 @@ static int pipe_handshake(Pipe* pipe, const char* ip, size_t port, size_t capaci
 
     buf[n] = '\0';
     if (buf[n - 1] == '\n') buf[n - 1] = '\0';
+
 
     if (strcmp(buf, "WAIT") == 0) {
         INFO("Server replied WAIT — waiting for peer...");
@@ -94,6 +96,21 @@ static int pipe_handshake(Pipe* pipe, const char* ip, size_t port, size_t capaci
         INFO("Peer info: %s:%d, extra info: %s",
              peer_ip, peer_port,
              (parsed == 3) ? peer_info : "(none)");
+
+        HandshakeInfo info = {0};
+        char* token = strtok(peer_info, " ");
+        while (token) {
+            if (strncmp(token, "BUF=", 4) == 0) {
+                info.buf = strtoul(token + 4, NULL, 10);
+            } else if (strncmp(token, "PROTO=", 6) == 0) {
+                info.proto = strtoul(token + 6, NULL, 10);
+            } else if (strncmp(token, "ID=", 3) == 0) {
+                info.id = strdup(token + 3);  // NOTE: this pointer is being freed by metrics_free()
+            }
+            token = strtok(NULL, " ");
+        }
+
+        metrics.id = info.id;
 
         struct sockaddr_in peer_addr = {0};
         peer_addr.sin_family = AF_INET;
@@ -152,6 +169,8 @@ bool pipe_read(Pipe* pipe, size_t n_bytes, const char* dst)
 
         if (bytes == 0)
             break;
+
+        metrics.packets_received++;
 
         Packet* packet = &pipe->buffer[pipe->count % pipe->capacity];
         packet_deserialize(packet, buf, (size_t)bytes);
@@ -213,9 +232,11 @@ static bool pipe_write_packet(Pipe* pipe, const Packet* packet)
     size_t len = packet_serialize(packet, buf, sizeof(buf));
     if (len == 0) return false;
 
+
     ssize_t sent = sendto(pipe->sock_fd, buf, len, 0,
                           (struct sockaddr*)&pipe->peer_addr,
                           sizeof(pipe->peer_addr));
+    metrics.packets_sent++;
     return sent == len;
 }
 
@@ -248,6 +269,8 @@ bool pipe_write(Pipe* pipe, void* payload, size_t len)
             perror("sendto");
             return false;
         }
+
+        metrics.packets_sent++;
 
         INFO("Sent packet #%u: %u bytes to %s:%d", packet.seq, packet.len, 
                 inet_ntoa(pipe->peer_addr.sin_addr),

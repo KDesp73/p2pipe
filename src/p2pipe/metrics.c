@@ -1,11 +1,12 @@
 #include "p2pipe/metrics.h"
 #include "extern/logging.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
 
-bool metrics_init(const char* path)
+bool metrics_init(Metrics* metrics, const char* path)
 {
     if (access(path, F_OK) == 0)
         return true; // File exists
@@ -23,10 +24,18 @@ bool metrics_init(const char* path)
     }
 
     fclose(fd);
+
+    metrics->id = NULL;
+    metrics->packets_sent = 0;
+    metrics->packets_received = 0;
+    metrics->packets_lost = 0;
+    metrics->acks_lost = 0;
+    metrics->threads_used = 1;
+
     return true;
 }
 
-bool metrics_write(Metrics metrics, const char* path)
+bool metrics_write(const Metrics* metrics, const char* path)
 {
     FILE* fd = fopen(path, "a");
     if (!fd) {
@@ -35,7 +44,7 @@ bool metrics_write(Metrics metrics, const char* path)
     }
 
     char buffer[1024];
-    snprintf(buffer, sizeof(buffer), METRICS_FMT, METRICS_ARGS(metrics));
+    snprintf(buffer, sizeof(buffer), METRICS_FMT, METRICS_ARGS(*metrics));
 
     size_t len = strlen(buffer);
     if (fwrite(buffer, 1, len, fd) != len) {
@@ -56,4 +65,13 @@ void metrics_start(Metrics* metrics)
 void metrics_end(Metrics* metrics)
 {
     metrics->end = time(NULL);
+}
+
+void metrics_free(Metrics* metrics)
+{
+    if(!metrics) return;
+    if(metrics->id){
+        free(metrics->id);
+        metrics->id = NULL;
+    }
 }

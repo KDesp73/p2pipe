@@ -1,6 +1,7 @@
 #include "futils.h"
 #include "help.h"
 #include "futils.h"
+#include "p2pipe/metrics.h"
 #include "validation.h"
 #include <bits/getopt_core.h>
 #include <stdio.h>
@@ -109,8 +110,13 @@ bool talk_handler(Context context)
     return true;
 }
 
+
+Metrics metrics;
 int main(int argc, char** argv)
 {
+    metrics_init(&metrics, METRICS_FILE);
+    metrics_start(&metrics);
+    
     cli_args_t args = cli_args_make(
         cli_arg_new(ARG_HELP, "help", "", no_argument),
         cli_arg_new(ARG_VERSION, "version", "", no_argument),
@@ -178,8 +184,13 @@ int main(int argc, char** argv)
     if(!handler(ctx)) goto error;
 
 cleanup:
+    metrics_end(&metrics);
+    metrics_write(&metrics, METRICS_FILE);
+    metrics_free(&metrics);
+
     cli_args_free(&args);
     context_free(&ctx);
+
     return 0;
 
 error:
