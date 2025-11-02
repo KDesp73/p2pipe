@@ -14,6 +14,7 @@ bool storage_init(Storage* storage, size_t capacity)
 
     storage->count = 0;
     storage->capacity = capacity;
+    storage->ready = true;;
     return true;
 }
 
@@ -30,24 +31,7 @@ void storage_free(Storage* storage)
     storage->packets = NULL;
     storage->count = 0;
     storage->capacity = 0;
-}
-
-void storage_append(Storage* storage, const Packet* packet)
-{
-    if (!storage || !packet)
-        return;
-
-    if (storage->count >= storage->capacity) {
-        size_t new_capacity = storage->capacity * 2;
-        storage_resize(storage, new_capacity);
-    }
-
-    Packet* copy = malloc(sizeof(Packet));
-    if (!copy)
-        return;
-
-    memcpy(copy, packet, sizeof(Packet));
-    storage->packets[storage->count++] = copy;
+    storage->ready = false;
 }
 
 void storage_resize(Storage* storage, size_t capacity)
@@ -61,11 +45,48 @@ void storage_resize(Storage* storage, size_t capacity)
 
     if (capacity > storage->capacity) {
         memset(new_packets + storage->capacity, 0,
-               (capacity - storage->capacity) * sizeof(Packet*));
+                (capacity - storage->capacity) * sizeof(Packet*));
     }
 
     storage->packets = new_packets;
     storage->capacity = capacity;
+}
+
+void storage_append(Storage* storage, const Packet* packet)
+{
+    if (!storage || !packet)
+        return;
+
+    if (storage->count >= storage->capacity)
+        storage_resize(storage, storage->capacity * 2);
+
+    // Check if we already have this sequence number
+    for (size_t i = 0; i < storage->count; ++i) {
+        if (storage->packets[i] && storage->packets[i]->seq == packet->seq)
+            return; // duplicate packet
+    }
+
+    Packet* copy = malloc(sizeof(Packet));
+    if (!copy)
+        return;
+    memcpy(copy, packet, sizeof(Packet));
+
+    size_t pos = storage->count;
+    for (size_t i = 0; i < storage->count; ++i) {
+        if (storage->packets[i]->seq > packet->seq) {
+            pos = i;
+            break;
+        }
+    }
+
+    if (pos < storage->count) {
+        memmove(&storage->packets[pos + 1],
+                &storage->packets[pos],
+                (storage->count - pos) * sizeof(Packet*));
+    }
+
+    storage->packets[pos] = copy;
+    storage->count++;
 }
 
 void storage_export(const Storage* storage, const char* path)
@@ -80,10 +101,19 @@ void storage_export(const Storage* storage, const char* path)
     }
 
     for (size_t i = 0; i < storage->count; ++i) {
-        const Packet* pkt = storage->packets[i];
-        if (pkt && pkt->len > 0) {
-            fwrite(pkt->data, 1, pkt->len, f);
+        for (size_t j = i + 1; j < storage->count; ++j) {
+            if (storage->packets[i]->seq > storage->packets[j]->seq) {
+                Packet* tmp = storage->packets[i];
+                storage->packets[i] = storage->packets[j];
+                storage->packets[j] = tmp;
+            }
         }
+    }
+
+    for (size_t i = 0; i < storage->count; ++i) {
+        const Packet* pkt = storage->packets[i];
+        if (pkt && pkt->len > 0)
+            fwrite(pkt->data, 1, pkt->len, f);
     }
 
     fclose(f);

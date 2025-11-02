@@ -181,7 +181,8 @@ bool pipe_read(Pipe* pipe, size_t n_bytes, const char* dst)
             return true;
         }
 
-        storage_append(&storage, packet);
+        if(storage.ready) storage_append(&storage, packet);
+        // TODO: send ack
 
         pipe->count++;
         total_read += packet->len;

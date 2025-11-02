@@ -7,6 +7,7 @@ typedef struct {
     Packet** packets;
     size_t capacity;
     size_t count;
+    bool ready;
 } Storage;
 
 bool storage_init(Storage* storage, size_t capacity);
