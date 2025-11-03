@@ -17,8 +17,6 @@
 #include "p2pipe/version.h"
 #include "cli.h"
 
-#define DEFAULT_CAPACITY 25
-
 bool serve_handler(Context context) 
 {
     if(!validate_port(context.port)) {
@@ -44,8 +42,6 @@ bool listen_handler(Context context)
         return false;
     }
 
-    storage_init(&storage, DEFAULT_CAPACITY);
-
     Pipe pipe = {0};
     int sock = pipe_rcv_open(&pipe, context.ip, context.port,
                              context.capacity ? context.capacity : DEFAULT_CAPACITY);
@@ -59,14 +55,11 @@ bool listen_handler(Context context)
     if (!pipe_read(&pipe, PACKET_BUFFER_SIZE * pipe.capacity, context.dst)) {
         ERRO("Could not read packets");
         pipe_rcv_close(&pipe);
-        storage_free(&storage);
         return false;
     }
 
+    storage_export(&pipe.storage, context.dst);
     pipe_rcv_close(&pipe);
-
-    storage_export(&storage, context.dst);
-    storage_free(&storage);
 
     return true;
 }
@@ -121,7 +114,6 @@ bool talk_handler(Context context)
 
 
 Metrics metrics;
-Storage storage;
 int main(int argc, char** argv)
 {
     metrics_init(&metrics, METRICS_FILE);
@@ -207,6 +199,5 @@ error:
     metrics_free(&metrics);
     cli_args_free(&args);
     context_free(&ctx);
-    storage_free(&storage);
     return 1;
 }

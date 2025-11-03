@@ -141,6 +141,8 @@ int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity)
     pipe_init(pipe, capacity);
     pipe->mode = MODE_RCV;
 
+    storage_init(&pipe->storage, DEFAULT_CAPACITY);
+
     return pipe_handshake(pipe, ip, port, capacity, MODE_RCV);
 }
 
@@ -181,7 +183,7 @@ bool pipe_read(Pipe* pipe, size_t n_bytes, const char* dst)
             return true;
         }
 
-        if(storage.ready) storage_append(&storage, packet);
+        if(pipe->storage.ready) storage_append(&pipe->storage, packet);
         // TODO: send ack
 
         pipe->count++;
@@ -213,6 +215,8 @@ void pipe_rcv_close(Pipe* pipe)
 
     pipe->count = 0;
     pipe->capacity = 0;
+
+    storage_free(&pipe->storage);
 
     printf("[INFO] Pipe receiver closed\n");
 }

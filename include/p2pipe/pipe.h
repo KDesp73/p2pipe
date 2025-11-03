@@ -2,9 +2,12 @@
 #define PIPE_H
 
 #include "p2pipe/packet.h"
+#include "p2pipe/storage.h"
 #include <netinet/in.h>
 #include <stdbool.h>
 #include <stddef.h>
+
+#define DEFAULT_CAPACITY 25
 
 typedef enum {
     MODE_SND,
@@ -18,6 +21,7 @@ typedef struct {
     size_t capacity;
     int sock_fd;
     struct sockaddr_in peer_addr;
+    Storage storage;
 } Pipe;
 
 int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity);
