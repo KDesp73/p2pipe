@@ -3,6 +3,7 @@
 #include "futils.h"
 #include "p2pipe/metrics.h"
 #include "p2pipe/storage.h"
+#include "p2pipe/threads.h"
 #include "validation.h"
 #include <bits/getopt_core.h>
 #include <stdio.h>
@@ -46,13 +47,12 @@ bool listen_handler(Context context)
     int sock = pipe_rcv_open(&pipe, context.ip, context.port,
                              context.capacity ? context.capacity : DEFAULT_CAPACITY);
     if (sock <= 0) {
-        pipe_rcv_close(&pipe);
         return false;
     }
 
     INFO("Listening for packets...");
 
-    if (!pipe_read(&pipe, PACKET_BUFFER_SIZE * pipe.capacity, context.dst)) {
+    if (!pipe_read(&pipe, PACKET_BUFFER_SIZE * pipe.buffer.capacity)) {
         ERRO("Could not read packets");
         pipe_rcv_close(&pipe);
         return false;
@@ -61,6 +61,7 @@ bool listen_handler(Context context)
     storage_export(&pipe.storage, context.dst);
     pipe_rcv_close(&pipe);
 
+    INFO("Exported received data to '%s'", context.dst);
     return true;
 }
 
@@ -81,13 +82,11 @@ bool talk_handler(Context context)
 
     Pipe pipe = {0};
     int sock = pipe_snd_open(&pipe, context.ip, context.port,
-                             context.capacity ? context.capacity : 25);
+                             context.capacity ? context.capacity : DEFAULT_CAPACITY);
     if (sock <= 0) {
         pipe_snd_close(&pipe);
         return false;
     }
-
-    INFO("Sending packets...");
 
     void* buffer = NULL;
     size_t len = 0;
@@ -103,8 +102,6 @@ bool talk_handler(Context context)
         pipe_snd_close(&pipe);
         return false;
     }
-
-    INFO("Sent %zu bytes total from '%s'", len, context.src);
 
     free(buffer);
     pipe_snd_close(&pipe);
@@ -185,14 +182,14 @@ int main(int argc, char** argv)
     }
     if(!handler(ctx)) goto error;
 
-cleanup:
     metrics_end(&metrics);
+    // metrics_print(&metrics);
     metrics_write(&metrics, METRICS_FILE);
-    metrics_free(&metrics);
 
+cleanup:
+    metrics_free(&metrics);
     cli_args_free(&args);
     context_free(&ctx);
-
     return 0;
 
 error:

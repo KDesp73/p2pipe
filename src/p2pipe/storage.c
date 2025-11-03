@@ -1,4 +1,5 @@
 #include "p2pipe/storage.h"
+#include "extern/logging.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,7 +21,7 @@ bool storage_init(Storage* storage, size_t capacity)
 
 void storage_free(Storage* storage)
 {
-    if (!storage)
+    if (!storage || !storage->ready)
         return;
 
     for (size_t i = 0; i < storage->count; ++i) {

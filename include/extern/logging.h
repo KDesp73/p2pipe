@@ -35,9 +35,7 @@ LOGAPI void logging_log(log_level_t log_level, char* format, ...);
 
 #define LOG(stream, type, format, ...) \
     do { \
-        fprintf(stream, "[%s] ", type); \
-        fprintf(stream, format, ##__VA_ARGS__); \
-        fprintf(stream, "\n"); \
+        fprintf(stream, "[%s] " format "\n", type, ##__VA_ARGS__); \
     } while(0)
 
 #define INFO(format, ...) \

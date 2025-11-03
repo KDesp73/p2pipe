@@ -21,9 +21,9 @@ typedef struct {
     uint8_t data[PACKET_BUFFER_SIZE];
 } Packet;
 
-#define PACKET_END (Packet) { .signals = SIGNAL_END }
-#define PACKET_ACK(n) (Packet) { .signals = SIGNAL_ACK, .seq = n }
-#define PACKET_RESEND(n) (Packet) { .signals = SIGNAL_RESEND, .seq = n }
+#define PACKET_END (Packet) { .signals = SIGNAL_END, .len = 0 }
+#define PACKET_ACK(n) (Packet) { .signals = SIGNAL_ACK, .seq = n, .len = 0 }
+#define PACKET_RESEND(n) (Packet) { .signals = SIGNAL_RESEND, .seq = n, .len = 0 }
 
 size_t packet_serialize(const Packet* packet, uint8_t* buffer, size_t buffer_len);
 bool packet_deserialize(Packet* packet, const uint8_t* buffer, size_t buf_len);

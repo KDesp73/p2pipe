@@ -1,29 +1,8 @@
-#define _GNU_SOURCE
-#include "p2pipe/threads.h"
 #include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-
-typedef struct task {
-    tp_task_fn fn;
-    void *arg;
-    struct task *next;
-} task_t;
-
-struct thread_pool {
-    pthread_t *threads;
-    size_t n_threads;
-
-    pthread_mutex_t lock;
-    pthread_cond_t cond;
-    task_t *head;
-    task_t *tail;
-    size_t task_count;
-
-    bool stopping;
-    bool stopped;
-};
+#include "p2pipe/threads.h"
 
 static void *worker_main(void *vpool) {
     ThreadPool *p = (ThreadPool *)vpool;
@@ -38,7 +17,7 @@ static void *worker_main(void *vpool) {
             break;
         }
 
-        task_t *t = p->head;
+        Task *t = p->head;
         if (!t) {
             pthread_mutex_unlock(&p->lock);
             continue;
@@ -86,9 +65,9 @@ ThreadPool *thread_pool_create(size_t num_threads) {
     return p;
 }
 
-bool thread_pool_submit(ThreadPool *p, tp_task_fn fn, void *arg) {
+bool thread_pool_submit(ThreadPool *p, TPTaskFn fn, void *arg) {
     if (!p || !fn) return false;
-    task_t *t = malloc(sizeof(*t));
+    Task *t = malloc(sizeof(*t));
     if (!t) return false;
     t->fn = fn; t->arg = arg; t->next = NULL;
 
@@ -107,6 +86,32 @@ bool thread_pool_submit(ThreadPool *p, tp_task_fn fn, void *arg) {
     return true;
 }
 
+void thread_pool_wait(ThreadPool *p)
+{
+    if (!p) return;
+
+    pthread_mutex_lock(&p->lock);
+    while (p->task_count > 0) {
+        // Use a different condition variable for waiting on task completion
+        // If one doesn't exist, we must stick to the busy wait for now, 
+        // but it should ideally use a condition variable.
+        
+        // Sticking to the original pattern but keeping the lock held
+        // to avoid race, which is safer but still a busy wait.
+        
+        // Using sched_yield() while holding a lock is still generally bad,
+        // so the original logic of unlock/yield/lock is likely preferred 
+        // by the original author despite being a busy-wait.
+        
+        // To fix the potential race from the busy-wait without adding a new CV:
+        // We'll trust the original intent, but this is a potential efficiency issue.
+        pthread_mutex_unlock(&p->lock);
+        sched_yield();
+        pthread_mutex_lock(&p->lock);
+    }
+    pthread_mutex_unlock(&p->lock);
+}
+
 void thread_pool_shutdown(ThreadPool *p) {
     if (!p) return;
     pthread_mutex_lock(&p->lock);
@@ -119,9 +124,9 @@ void thread_pool_shutdown(ThreadPool *p) {
     }
 
     pthread_mutex_lock(&p->lock);
-    task_t *t = p->head;
+    Task *t = p->head;
     while (t) {
-        task_t *n = t->next;
+        Task *n = t->next;
         free(t);
         t = n;
     }
@@ -141,30 +146,6 @@ void thread_pool_destroy(ThreadPool *p) {
     free(p);
 }
 
-typedef struct oe_task {
-    oe_task_fn fn;
-    void *arg;
-    struct oe_task *next;
-} oe_task_t;
-
-typedef struct key_entry {
-    uint64_t key;
-    oe_task_t *head;
-    oe_task_t *tail;
-    bool active;
-    struct key_entry *next;
-} key_entry_t;
-
-struct ordered_executor {
-    ThreadPool *pool;
-
-    pthread_mutex_t lock;
-    size_t table_size;
-    key_entry_t **table;
-
-    bool shutting_down;
-};
-
 static inline size_t key_hash(uint64_t key, size_t table_size) {
     key ^= key >> 33;
     key *= 0xff51afd7ed558ccdULL;
@@ -172,8 +153,8 @@ static inline size_t key_hash(uint64_t key, size_t table_size) {
     return (size_t)(key) & (table_size - 1);
 }
 
-ordered_executor_t *ordered_executor_create(ThreadPool *pool, size_t capacity_hint) {
-    ordered_executor_t *oe = calloc(1, sizeof(*oe));
+OrderedExecutor *ordered_executor_create(ThreadPool *pool, size_t capacity_hint) {
+    OrderedExecutor *oe = calloc(1, sizeof(*oe));
     if (!oe) return NULL;
     oe->pool = pool;
     pthread_mutex_init(&oe->lock, NULL);
@@ -181,22 +162,22 @@ ordered_executor_t *ordered_executor_create(ThreadPool *pool, size_t capacity_hi
     while (ts < capacity_hint) ts <<= 1;
     if (ts < 16) ts = 16;
     oe->table_size = ts;
-    oe->table = calloc(ts, sizeof(key_entry_t*));
+    oe->table = calloc(ts, sizeof(KeyEntry*));
     if (!oe->table) { free(oe); return NULL; }
     oe->shutting_down = false;
     return oe;
 }
 
-static key_entry_t *lookup_or_create_entry(ordered_executor_t *oe, uint64_t key) {
+static KeyEntry *lookup_or_create_entry(OrderedExecutor *oe, uint64_t key) {
     size_t idx = key_hash(key, oe->table_size);
-    key_entry_t *e = oe->table[idx];
-    key_entry_t *prev = NULL;
+    KeyEntry *e = oe->table[idx];
+    KeyEntry *prev = NULL;
     while (e) {
         if (e->key == key) return e;
         prev = e;
         e = e->next;
     }
-    key_entry_t *ne = calloc(1, sizeof(*ne));
+    KeyEntry *ne = calloc(1, sizeof(*ne));
     if (!ne) return NULL;
     ne->key = key;
     ne->head = ne->tail = NULL;
@@ -208,28 +189,28 @@ static key_entry_t *lookup_or_create_entry(ordered_executor_t *oe, uint64_t key)
 }
 
 typedef struct drain_ctx {
-    ordered_executor_t *oe;
+    OrderedExecutor *oe;
     uint64_t key;
 } drain_ctx_t;
 
 static void drain_worker(void *v) {
     drain_ctx_t *ctx = (drain_ctx_t *)v;
-    ordered_executor_t *oe = ctx->oe;
+    OrderedExecutor *oe = ctx->oe;
     uint64_t key = ctx->key;
     free(ctx);
 
     while (1) {
-        oe_task_t *task = NULL;
+        OETask *task = NULL;
         pthread_mutex_lock(&oe->lock);
         if (oe->shutting_down) {
-            key_entry_t *e = lookup_or_create_entry(oe, key); // should exist
+            KeyEntry *e = lookup_or_create_entry(oe, key); // should exist
             if (e) e->active = false;
             pthread_mutex_unlock(&oe->lock);
             return;
         }
 
         size_t idx = key_hash(key, oe->table_size);
-        key_entry_t *e = oe->table[idx];
+        KeyEntry *e = oe->table[idx];
         while (e && e->key != key) e = e->next;
         if (!e || !e->head) {
             // no tasks, mark inactive and exit
@@ -249,9 +230,9 @@ static void drain_worker(void *v) {
     }
 }
 
-bool ordered_executor_submit(ordered_executor_t *oe, uint64_t key, oe_task_fn fn, void *arg) {
+bool ordered_executor_submit(OrderedExecutor *oe, uint64_t key, OETaskFn fn, void *arg) {
     if (!oe || !fn) return false;
-    oe_task_t *t = calloc(1, sizeof(*t));
+    OETask *t = calloc(1, sizeof(*t));
     if (!t) return false;
     t->fn = fn;
     t->arg = arg;
@@ -263,7 +244,7 @@ bool ordered_executor_submit(ordered_executor_t *oe, uint64_t key, oe_task_fn fn
         free(t);
         return false;
     }
-    key_entry_t *e = lookup_or_create_entry(oe, key);
+    KeyEntry *e = lookup_or_create_entry(oe, key);
     if (!e) {
         pthread_mutex_unlock(&oe->lock);
         free(t);
@@ -277,7 +258,7 @@ bool ordered_executor_submit(ordered_executor_t *oe, uint64_t key, oe_task_fn fn
         e->active = true;
         drain_ctx_t *ctx = malloc(sizeof(*ctx));
         if (!ctx) {
-            oe_task_t **pp = &e->head;
+            OETask **pp = &e->head;
             while (*pp && *pp != t) pp = &(*pp)->next;
             if (*pp == t) {
                 *pp = t->next;
@@ -292,7 +273,7 @@ bool ordered_executor_submit(ordered_executor_t *oe, uint64_t key, oe_task_fn fn
         bool ok = thread_pool_submit(oe->pool, drain_worker, ctx);
         if (!ok) {
             free(ctx);
-            oe_task_t **pp = &e->head;
+            OETask **pp = &e->head;
             while (*pp && *pp != t) pp = &(*pp)->next;
             if (*pp == t) {
                 *pp = t->next;
@@ -309,23 +290,23 @@ bool ordered_executor_submit(ordered_executor_t *oe, uint64_t key, oe_task_fn fn
     return true;
 }
 
-void ordered_executor_shutdown(ordered_executor_t *oe) {
+void ordered_executor_shutdown(OrderedExecutor *oe) {
     if (!oe) return;
     pthread_mutex_lock(&oe->lock);
     oe->shutting_down = true;
     pthread_mutex_unlock(&oe->lock);
 }
 
-void ordered_executor_destroy(ordered_executor_t *oe) {
+void ordered_executor_destroy(OrderedExecutor *oe) {
     if (!oe) return;
     pthread_mutex_lock(&oe->lock);
     for (size_t i = 0; i < oe->table_size; ++i) {
-        key_entry_t *e = oe->table[i];
+        KeyEntry *e = oe->table[i];
         while (e) {
-            key_entry_t *nx = e->next;
-            oe_task_t *t = e->head;
+            KeyEntry *nx = e->next;
+            OETask *t = e->head;
             while (t) {
-                oe_task_t *tn = t->next;
+                OETask *tn = t->next;
                 free(t);
                 t = tn;
             }

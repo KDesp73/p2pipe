@@ -1,138 +1,22 @@
 #include "p2pipe/pipe.h"
 #include "extern/logging.h"
-#include "p2pipe/metrics.h"
+#include "p2pipe/buffer.h"
 #include "p2pipe/packet.h"
 #include "p2pipe/storage.h"
-#include "p2pipe/udp.h"
+#include "p2pipe/helpers.h"
+#include "p2pipe/threads.h"
 #include <arpa/inet.h>
-#include <errno.h>
+#include <asm-generic/errno.h>
+#include <pthread.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-static void pipe_init(Pipe* pipe, size_t capacity)
-{
-    pipe->buffer = malloc(sizeof(Packet) * capacity);
-    if(!pipe->buffer) {
-        ERRO("Could not allocate buffer");
-        return;
-    }
-    pipe->capacity = capacity;
-    pipe->count = 0;
-    pipe->sock_fd = 0;
-}
-
-static int pipe_handshake(Pipe* pipe, const char* ip, size_t port, size_t capacity, PipeMode mode)
-{
-    char payload[512];
-    snprintf(payload, sizeof(payload), "BUF=%zu PROTO=1 TYPE=%s", capacity, mode == MODE_SND ? "SND" : "RCV");
-
-    char buf[1024];
-    ssize_t n;
-    int sock = -1;
-    unsigned short local_port = get_available_udp_port();
-
-    n = udp_handshake_blocking(ip, port, payload, buf, sizeof(buf),
-                               3, 5, local_port, &sock);
-    if (n <= 0) {
-        ERRO("Initial handshake failed or timed out");
-        if (sock >= 0) close(sock);
-        return -1;
-    }
-
-    buf[n] = '\0';
-    if (buf[n - 1] == '\n') buf[n - 1] = '\0';
-
-
-    if (strcmp(buf, "WAIT") == 0) {
-        INFO("Server replied WAIT — waiting for peer...");
-
-        struct sockaddr_in srv = {0};
-        srv.sin_family = AF_INET;
-        srv.sin_port = htons(port);
-        inet_pton(AF_INET, ip, &srv.sin_addr);
-
-        for (;;) {
-            struct sockaddr_storage from;
-            socklen_t fromlen = sizeof(from);
-
-            struct timeval tv = { .tv_sec = 60, .tv_usec = 0 };
-            fd_set rfds;
-            FD_ZERO(&rfds);
-            FD_SET(sock, &rfds);
-
-            int rv = select(sock + 1, &rfds, NULL, NULL, &tv);
-            if (rv > 0 && FD_ISSET(sock, &rfds)) {
-                ssize_t r = recvfrom(sock, buf, sizeof(buf) - 1, 0,
-                                     (struct sockaddr*)&from, &fromlen);
-                if (r <= 0) continue;
-                buf[r] = '\0';
-                if (strncmp(buf, "PEER ", 5) == 0) break;
-            } else if (rv == 0) {
-                ERRO("Timeout while waiting for peer info");
-                close(sock);
-                return -1;
-            } else {
-                perror("select");
-                close(sock);
-                return -1;
-            }
-        }
-    }
-
-    if (strncmp(buf, "PEER ", 5) == 0) {
-        char peer_ip[INET_ADDRSTRLEN] = {0};
-        int peer_port = 0;
-        char peer_info[512] = {0};
-
-        int parsed = sscanf(buf + 5, "%15s %d %511[^\n]", peer_ip, &peer_port, peer_info);
-        if (parsed < 2) {
-            ERRO("Malformed PEER line: %s", buf);
-            close(sock);
-            return -1;
-        }
-
-        INFO("Peer info: %s:%d, extra info: %s",
-             peer_ip, peer_port,
-             (parsed == 3) ? peer_info : "(none)");
-
-        HandshakeInfo info = {0};
-        char* token = strtok(peer_info, " ");
-        while (token) {
-            if (strncmp(token, "BUF=", 4) == 0) {
-                info.buf = strtoul(token + 4, NULL, 10);
-            } else if (strncmp(token, "PROTO=", 6) == 0) {
-                info.proto = strtoul(token + 6, NULL, 10);
-            } else if (strncmp(token, "ID=", 3) == 0) {
-                info.id = strdup(token + 3);  // NOTE: this pointer is being freed by metrics_free()
-            }
-            token = strtok(NULL, " ");
-        }
-
-        metrics.id = info.id;
-
-        struct sockaddr_in peer_addr = {0};
-        peer_addr.sin_family = AF_INET;
-        peer_addr.sin_port = htons(peer_port);
-        if (inet_pton(AF_INET, peer_ip, &peer_addr.sin_addr) <= 0) {
-            ERRO("Invalid peer IP: %s", peer_ip);
-            close(sock);
-            return -1;
-        }
-
-        pipe->sock_fd = sock;
-        pipe->peer_addr = peer_addr;
-
-        INFO("Handshake completed — connected to peer %s:%d", peer_ip, peer_port);
-        return sock;
-    }
-
-    ERRO("Unknown handshake response: %s", buf);
-    close(sock);
-    return -1;
-}
+ThreadPool* tp = NULL;
+OrderedExecutor* oe = NULL;
 
 int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity)
 {
@@ -140,109 +24,61 @@ int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity)
 
     pipe_init(pipe, capacity);
     pipe->mode = MODE_RCV;
+    storage_init(&pipe->storage, capacity ? capacity : DEFAULT_CAPACITY); 
 
-    storage_init(&pipe->storage, DEFAULT_CAPACITY);
-
-    return pipe_handshake(pipe, ip, port, capacity, MODE_RCV);
+    int sock = pipe_handshake(pipe, ip, port, capacity, MODE_RCV);
+    if (sock < 0) {
+        pipe_free(pipe);
+        return -1;
+    }
+    thread_pool_submit(tp, packet_listener, pipe);
+    pipe->running = true;
+    return sock;
 }
 
-bool pipe_read(Pipe* pipe, size_t n_bytes, const char* dst)
+bool pipe_read(Pipe* pipe, size_t n_bytes)
 {
-    if (!pipe || pipe->mode != MODE_RCV || pipe->sock_fd < 0)
+    if (!pipe || pipe->mode != MODE_RCV || pipe->sock_fd < 0) {
         return false;
+    }
+    if (n_bytes == 0) return true;
 
-    size_t total_read = 0;
-    struct sockaddr_in src_addr;
-    socklen_t addrlen = sizeof(src_addr);
-
-    while (total_read < n_bytes) {
-        uint8_t buf[PACKET_BUFFER_SIZE + 9]; // 1 + 4 + 4 + data
-        ssize_t bytes = recvfrom(pipe->sock_fd,
-                                 buf,
-                                 sizeof(buf),
-                                 0,
-                                 (struct sockaddr*)&src_addr,
-                                 &addrlen);
-        if (bytes < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
-                break;
-            perror("recvfrom");
-            return false;
-        }
-
-        if (bytes == 0)
-            break;
-
-        metrics.packets_received++;
-
-        Packet* packet = &pipe->buffer[pipe->count % pipe->capacity];
-        packet_deserialize(packet, buf, (size_t)bytes);
-
-        if(packet->signals & SIGNAL_END) {
-            INFO("Received END signal");
-            return true;
-        }
-
-        if(pipe->storage.ready) storage_append(&pipe->storage, packet);
-        // TODO: send ack
-
-        pipe->count++;
-        total_read += packet->len;
-
-        INFO("Received packet #%u: %u bytes from %s:%d",
-            packet->seq,
-            (unsigned)packet->len,
-            inet_ntoa(src_addr.sin_addr),
-            ntohs(src_addr.sin_port));
+    pthread_mutex_lock(&pipe->storage_lock);
+    
+    while (pipe->storage.count == 0 && pipe->running) {
+        INFO("Pipe read blocking: Waiting for data...");
+        pthread_cond_wait(&pipe->storage_cond, &pipe->storage_lock);
+    }
+    
+    if (!pipe->running && pipe->storage.count == 0) {
+        INFO("Pipe closed during read.");
+        pthread_mutex_unlock(&pipe->storage_lock);
+        return false; 
     }
 
-    return total_read > 0;
+    pthread_mutex_unlock(&pipe->storage_lock);
+    
+    return true;
 }
+
 
 void pipe_rcv_close(Pipe* pipe)
 {
     if (!pipe) return;
 
-    if (pipe->sock_fd >= 0) {
-        close(pipe->sock_fd);
-        pipe->sock_fd = -1;
-    }
-
-    if (pipe->buffer) {
-        free(pipe->buffer);
-        pipe->buffer = NULL;
-    }
-
-    pipe->count = 0;
-    pipe->capacity = 0;
-
-    storage_free(&pipe->storage);
-
-    printf("[INFO] Pipe receiver closed\n");
+    thread_pool_wait(tp);
+    pipe_free(pipe);
+    INFO("Pipe receiver closed");
 }
 
 int pipe_snd_open(Pipe* pipe, const char* ip, size_t port, size_t capacity)
 {
     pipe_init(pipe, capacity);
     pipe->mode = MODE_SND;
+    pipe->running = true;
+    thread_pool_submit(tp, ack_listener, pipe);
 
     return pipe_handshake(pipe, ip, port, capacity, MODE_SND);
-}
-
-static bool pipe_write_packet(Pipe* pipe, const Packet* packet)
-{
-    if (!pipe || !packet) return false;
-
-    uint8_t buf[sizeof(Packet)];
-    size_t len = packet_serialize(packet, buf, sizeof(buf));
-    if (len == 0) return false;
-
-
-    ssize_t sent = sendto(pipe->sock_fd, buf, len, 0,
-                          (struct sockaddr*)&pipe->peer_addr,
-                          sizeof(pipe->peer_addr));
-    metrics.packets_sent++;
-    return sent == len;
 }
 
 bool pipe_write(Pipe* pipe, void* payload, size_t len)
@@ -252,7 +88,8 @@ bool pipe_write(Pipe* pipe, void* payload, size_t len)
 
     uint8_t* data = payload;
     size_t offset = 0;
-    uint32_t seq = 0;
+    
+    uint32_t seq = pipe->seq; 
 
     while (offset < len) {
         Packet packet = {0};
@@ -261,60 +98,90 @@ bool pipe_write(Pipe* pipe, void* payload, size_t len)
         packet.len = (len - offset) < PACKET_BUFFER_SIZE ? (len - offset) : PACKET_BUFFER_SIZE;
         memcpy(packet.data, data + offset, packet.len);
 
-        pipe->buffer[pipe->count] = packet;
+        pthread_mutex_lock(&pipe->ack_lock);
 
-        uint8_t buf[sizeof(Packet)];
-        size_t buf_len = packet_serialize(&packet, buf, sizeof(buf));
-        if (buf_len == 0) return false;
+        while (pipe->buffer.count >= pipe->buffer.capacity) {
+            WARN("Buffer full (%zu/%zu). Waiting for ACKs...", pipe->buffer.count, pipe->buffer.capacity);
+            pthread_cond_wait(&pipe->ack_cond, &pipe->ack_lock);
+        }
 
-        ssize_t sent = sendto(pipe->sock_fd, buf, buf_len, 0,
-                              (struct sockaddr*)&pipe->peer_addr,
-                              sizeof(pipe->peer_addr));
-        if (sent != buf_len) {
-            perror("sendto");
+        if (!buffer_append(&pipe->buffer, packet)) {
+            ERRO("Failed to append packet to buffer");
+            pthread_mutex_unlock(&pipe->ack_lock);
             return false;
         }
 
-        metrics.packets_sent++;
+        pthread_mutex_unlock(&pipe->ack_lock); 
 
-        INFO("Sent packet #%u: %u bytes to %s:%d", packet.seq, packet.len, 
-                inet_ntoa(pipe->peer_addr.sin_addr),
-                ntohs(pipe->peer_addr.sin_port));
+        pipe_write_packet_async(pipe, &packet, NULL);
 
         offset += packet.len;
-        pipe->count++;
     }
 
+    pipe->seq = seq; 
     return true;
 }
 
 bool pipe_flush(Pipe* pipe)
 {
-    (void)pipe; // unused
-    return true;
+    if (!pipe || pipe->mode != MODE_SND || pipe->sock_fd < 0) {
+        return false;
+    }
+
+    pthread_mutex_lock(&pipe->ack_lock);
+    
+    if (pipe->buffer.count == 0) {
+        pthread_mutex_unlock(&pipe->ack_lock);
+        INFO("Pipe is already flushed.");
+        return true;
+    }
+
+    struct timespec ts;
+    bool success = true;
+
+    while (pipe->buffer.count > 0) {
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += 5; 
+
+        INFO("Flushing pipe: Waiting for %zu packets to be acknowledged...", pipe->buffer.count);
+        
+        if (pthread_cond_timedwait(&pipe->ack_cond, &pipe->ack_lock, &ts) == ETIMEDOUT) {
+             WARN("Flush timed out waiting for %zu packets to be acknowledged. Proceeding.", pipe->buffer.count);
+             success = false;
+             break;
+        }
+    }
+    
+    pthread_cond_broadcast(&pipe->ack_cond); 
+    pthread_mutex_unlock(&pipe->ack_lock);
+    
+    if (success) {
+        INFO("Pipe successfully flushed. Buffer is empty.");
+    }
+
+    return success;
 }
 
-void pipe_snd_close(Pipe* pipe)
+void pipe_snd_close(Pipe *pipe)
 {
     if (!pipe) return;
 
-    if(!pipe_write_packet(pipe, &PACKET_END)) {
-        WARN("END signal could was not send. Communication might have already ended");
+    pipe_flush(pipe);
+    
+    Packet end = PACKET_END;
+    if (!pipe_write_packet_sync(pipe, &end, NULL)) {
+        WARN("Failed to send END packet");
+    } else {
+        INFO("Sent END packet");
     }
 
-    // Cleanup
+    pipe->running = false;
+    thread_pool_wait(tp); 
 
-    if (pipe->sock_fd >= 0) {
-        close(pipe->sock_fd);
-        pipe->sock_fd = -1;
+    if (pipe->buffer.count > 0) {
+        WARN("There are %zu packets that have not been acknowledged and may be lost.", pipe->buffer.count);
     }
-
-    if (pipe->buffer) {
-        free(pipe->buffer);
-        pipe->buffer = NULL;
-    }
-
-    pipe->count = 0;
-    pipe->capacity = 0;
+    
+    pipe_free(pipe);
     INFO("Pipe sender closed");
 }

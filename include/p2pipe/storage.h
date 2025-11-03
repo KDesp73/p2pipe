@@ -16,5 +16,4 @@ void storage_append(Storage* storage, const Packet* packet);
 void storage_resize(Storage* storage, size_t capacity);
 void storage_export(const Storage* storage, const char* path);
 
-
 #endif // STORAGE_H
