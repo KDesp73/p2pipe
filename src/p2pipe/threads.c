@@ -26,7 +26,7 @@ struct thread_pool {
 };
 
 static void *worker_main(void *vpool) {
-    thread_pool_t *p = (thread_pool_t *)vpool;
+    ThreadPool *p = (ThreadPool *)vpool;
 
     while (1) {
         pthread_mutex_lock(&p->lock);
@@ -55,9 +55,9 @@ static void *worker_main(void *vpool) {
     return NULL;
 }
 
-thread_pool_t *thread_pool_create(size_t num_threads) {
+ThreadPool *thread_pool_create(size_t num_threads) {
     if (num_threads == 0) num_threads = 1;
-    thread_pool_t *p = calloc(1, sizeof(*p));
+    ThreadPool *p = calloc(1, sizeof(*p));
     if (!p) return NULL;
 
     p->n_threads = num_threads;
@@ -86,7 +86,7 @@ thread_pool_t *thread_pool_create(size_t num_threads) {
     return p;
 }
 
-bool thread_pool_submit(thread_pool_t *p, tp_task_fn fn, void *arg) {
+bool thread_pool_submit(ThreadPool *p, tp_task_fn fn, void *arg) {
     if (!p || !fn) return false;
     task_t *t = malloc(sizeof(*t));
     if (!t) return false;
@@ -107,7 +107,7 @@ bool thread_pool_submit(thread_pool_t *p, tp_task_fn fn, void *arg) {
     return true;
 }
 
-void thread_pool_shutdown(thread_pool_t *p) {
+void thread_pool_shutdown(ThreadPool *p) {
     if (!p) return;
     pthread_mutex_lock(&p->lock);
     p->stopping = true;
@@ -132,7 +132,7 @@ void thread_pool_shutdown(thread_pool_t *p) {
     p->stopped = true;
 }
 
-void thread_pool_destroy(thread_pool_t *p) {
+void thread_pool_destroy(ThreadPool *p) {
     if (!p) return;
     thread_pool_shutdown(p);
     free(p->threads);
@@ -156,7 +156,7 @@ typedef struct key_entry {
 } key_entry_t;
 
 struct ordered_executor {
-    thread_pool_t *pool;
+    ThreadPool *pool;
 
     pthread_mutex_t lock;
     size_t table_size;
@@ -172,7 +172,7 @@ static inline size_t key_hash(uint64_t key, size_t table_size) {
     return (size_t)(key) & (table_size - 1);
 }
 
-ordered_executor_t *ordered_executor_create(thread_pool_t *pool, size_t capacity_hint) {
+ordered_executor_t *ordered_executor_create(ThreadPool *pool, size_t capacity_hint) {
     ordered_executor_t *oe = calloc(1, sizeof(*oe));
     if (!oe) return NULL;
     oe->pool = pool;

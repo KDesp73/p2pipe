@@ -118,3 +118,6 @@ void storage_export(const Storage* storage, const char* path)
 
     fclose(f);
 }
+
+// TODO: If packet is received in-order append it immediately in the file and
+// remove it from storage

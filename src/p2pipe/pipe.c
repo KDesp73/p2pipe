@@ -1,6 +1,5 @@
 #include "p2pipe/pipe.h"
 #include "extern/logging.h"
-#include "futils.h"
 #include "p2pipe/metrics.h"
 #include "p2pipe/packet.h"
 #include "p2pipe/storage.h"
@@ -22,6 +21,7 @@ static void pipe_init(Pipe* pipe, size_t capacity)
     }
     pipe->capacity = capacity;
     pipe->count = 0;
+    pipe->sock_fd = 0;
 }
 
 static int pipe_handshake(Pipe* pipe, const char* ip, size_t port, size_t capacity, PipeMode mode)
@@ -257,7 +257,7 @@ bool pipe_write(Pipe* pipe, void* payload, size_t len)
         packet.len = (len - offset) < PACKET_BUFFER_SIZE ? (len - offset) : PACKET_BUFFER_SIZE;
         memcpy(packet.data, data + offset, packet.len);
 
-        pipe->buffer[pipe->count++] = packet;
+        pipe->buffer[pipe->count] = packet;
 
         uint8_t buf[sizeof(Packet)];
         size_t buf_len = packet_serialize(&packet, buf, sizeof(buf));
