@@ -35,16 +35,16 @@ _p2pipe () {
     local words cword
     _get_comp_words_by_ref -n "$COMP_WORDBREAKS" words cword
 
-    declare -a literals=(serve --port --help listen --ip --capacity --dst talk --src -h --help -v --version)
+    declare -a literals=(serve -P --port --help listen -I --ip -C --capacity -d --dst talk -s --src -h --help -v --version)
     declare -a regexes=()
     declare -A literal_transitions=()
     declare -A nontail_transitions=()
-    literal_transitions[0]="([0]=1 [3]=2 [7]=3 [9]=4 [10]=4 [11]=4 [12]=4)"
-    literal_transitions[1]="([1]=9 [2]=1)"
-    literal_transitions[2]="([1]=10 [2]=2 [4]=11 [5]=12 [6]=13)"
-    literal_transitions[3]="([1]=5 [2]=3 [4]=6 [5]=7 [8]=8)"
-    literal_transitions[4]="([9]=4 [10]=4 [11]=4 [12]=4)"
-    declare -A match_anything_transitions=([5]=3 [7]=3 [8]=3 [9]=1 [12]=2 [13]=2 [10]=2 [11]=2 [6]=3)
+    literal_transitions[0]="([0]=1 [4]=2 [11]=3 [14]=4 [15]=4 [16]=4 [17]=4)"
+    literal_transitions[1]="([1]=13 [2]=13 [3]=1)"
+    literal_transitions[2]="([1]=9 [2]=9 [3]=2 [5]=10 [6]=10 [7]=11 [8]=11 [9]=12 [10]=12)"
+    literal_transitions[3]="([1]=5 [2]=5 [3]=3 [5]=6 [6]=6 [7]=7 [8]=7 [12]=8 [13]=8)"
+    literal_transitions[4]="([14]=4 [15]=4 [16]=4 [17]=4)"
+    declare -A match_anything_transitions=([7]=3 [9]=2 [10]=2 [11]=2 [12]=2 [8]=3 [6]=3 [13]=1 [5]=3)
     declare -A subword_transitions
 
     local state=0
@@ -81,11 +81,11 @@ _p2pipe () {
         return 1
     done
 
-    declare -A literal_transitions_level_0=([4]="9 11" [0]="0 3 7 9 11" [3]="1 2 4 5 8" [2]="1 2 4 5 6" [1]="1 2")
-    declare -A literal_transitions_level_1=([0]="10 12" [4]="10 12")
+    declare -A literal_transitions_level_0=([4]="14 16" [0]="0 4 11 14 16" [3]="1 2 3 5 6 7 8 12 13" [2]="1 2 3 5 6 7 8 9 10" [1]="1 2 3")
+    declare -A literal_transitions_level_1=([0]="15 17" [4]="15 17")
     declare -A subword_transitions_level_0=()
     declare -A subword_transitions_level_1=()
-    declare -A commands_level_0=([8]="0" [13]="0")
+    declare -A commands_level_0=([12]="0" [8]="0")
     declare -A commands_level_1=()
     declare -A nontail_commands_level_0=()
     declare -A nontail_regexes_level_0=()

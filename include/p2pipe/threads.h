@@ -32,6 +32,8 @@ bool thread_pool_submit(ThreadPool *p, TPTaskFn fn, void *arg);
 void thread_pool_wait(ThreadPool *p);
 void thread_pool_shutdown(ThreadPool *p);
 void thread_pool_destroy(ThreadPool *p);
+void thread_pool_wake_all(ThreadPool *p);
+
 
 typedef void (*OETaskFn)(void *arg);
 typedef struct oe_task {

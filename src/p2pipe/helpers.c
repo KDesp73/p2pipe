@@ -120,7 +120,7 @@ bool threads_init(void)
 {
     if (tp && oe) return true;
 
-    tp = thread_pool_create(4);
+    tp = thread_pool_create(16);
     if (!tp) return false;
 
     oe = ordered_executor_create(tp, 64);
@@ -136,14 +136,17 @@ bool threads_init(void)
 void threads_shutdown(void)
 {
     if (oe) {
-        ordered_executor_shutdown(oe);
-        ordered_executor_destroy(oe);
-        oe = NULL;
+        ordered_executor_shutdown(oe); 
     }
 
     if (tp) {
         thread_pool_destroy(tp);
         tp = NULL;
+    }
+
+    if (oe) {
+        ordered_executor_destroy(oe);
+        oe = NULL;
     }
 }
 
@@ -360,6 +363,8 @@ void pipe_free(Pipe* pipe)
 
     pthread_cond_destroy(&pipe->ack_cond);
     pthread_mutex_destroy(&pipe->ack_lock);
+    pthread_cond_destroy(&pipe->storage_cond);
+    pthread_mutex_destroy(&pipe->storage_lock);
 
     threads_shutdown();
 }
@@ -378,7 +383,7 @@ void ack_listener(void* arg)
         if (r <= 0) continue;
 
         if (!packet_deserialize(&ack, buf, (size_t)r)) {
-            WARN("Failed to deserialize incoming packet (Size: %zd).", r);
+            ERRO("Failed to deserialize incoming packet (Size: %zd).", r);
             continue;
         }
 
@@ -389,7 +394,7 @@ void ack_listener(void* arg)
                 pthread_cond_broadcast(&pipe->ack_cond);
                 INFO("Successfully processed ACK #%u. Signaling waiting sender.", ack.seq);
             } else {
-                 INFO("Received duplicate/stale ACK #%u. Not found in sender buffer.", ack.seq);
+                WARN("Received duplicate/stale ACK #%u. Not found in sender buffer.", ack.seq);
             }
             pthread_mutex_unlock(&pipe->ack_lock);
         }
@@ -434,12 +439,9 @@ void packet_listener(void* arg)
         }
 
         if (pkt_copy->signals & SIGNAL_END) {
-            INFO("Received END signal. Shutting down listener and notifying readers.");
+            INFO("Received END signal");
             free(pkt_copy);
-            pthread_mutex_lock(&pipe->storage_lock);
-            pipe->running = false;
-            pthread_cond_broadcast(&pipe->storage_cond);
-            pthread_mutex_unlock(&pipe->storage_lock);
+            pipe->end_received = true;
             return; 
         }
         

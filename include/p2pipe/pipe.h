@@ -25,6 +25,7 @@ typedef struct {
     uint32_t seq;
 
     bool running;
+    bool end_received;
     pthread_mutex_t ack_lock;
     pthread_cond_t ack_cond;
     pthread_mutex_t storage_lock;

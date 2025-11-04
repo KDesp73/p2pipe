@@ -26,7 +26,8 @@ ifeq ($(type), RELEASE)
 	CFLAGS += -O3
 else
 	SANITIZERS = -fsanitize=address,undefined
-	CFLAGS  += -DDEBUG -ggdb
+	CFLAGS  += -DDEBUG -ggdb -fno-omit-frame-pointer -fno-optimize-sibling-calls
+	CFLAGS  += -Wall -Wextra -Wno-unused-parameter -Wno-unused-function
 	CFLAGS  += $(SANITIZERS)
 	LDFLAGS += $(SANITIZERS)
 endif
@@ -118,6 +119,8 @@ autocomplete: ## Generate autocomplete scripts for bash, zsh and fish
 	complgen  --zsh ./docs/autocomplete/p2pipe.zsh  ./docs/autocomplete/p2pipe.usage
 	complgen --bash ./docs/autocomplete/p2pipe.bash ./docs/autocomplete/p2pipe.usage
 	complgen --fish ./docs/autocomplete/p2pipe.fish ./docs/autocomplete/p2pipe.usage
+	sudo cp docs/autocomplete/p2pipe.zsh /usr/share/zsh/functions/Completion/_p2pipe
+	# TODO: Install other scripts
 
 # Phony targets to avoid conflicts with file names
 .PHONY: all clean distclean install uninstall dist compile_commands.json help check_tools verbose

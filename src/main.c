@@ -50,6 +50,8 @@ bool listen_handler(Context context)
         return false;
     }
 
+    storage_init(&pipe.storage, context.capacity ? context.capacity : DEFAULT_CAPACITY, context.dst, pipe.seq); 
+
     INFO("Listening for packets...");
 
     if (!pipe_read(&pipe, PACKET_BUFFER_SIZE * pipe.buffer.capacity)) {
@@ -58,7 +60,6 @@ bool listen_handler(Context context)
         return false;
     }
 
-    storage_export(&pipe.storage, context.dst);
     pipe_rcv_close(&pipe);
 
     INFO("Exported received data to '%s'", context.dst);

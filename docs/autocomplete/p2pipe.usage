@@ -9,19 +9,19 @@ p2pipe <COMMANDS> | [<OPTIONS>...] ;
             | (-v || --version) "Prints the project version"
             ;
 
-<SERVER-OPTIONS> ::= (--port <PORT>) "Specify the port of the server"
+<SERVER-OPTIONS> ::= (-P <PORT> | --port <PORT>) "Specify the port of the server"
                    | (--help) "Prints the help message"
                    ;
 
 <CLIENT-OPTIONS> ::= <SERVER-OPTIONS>
-                   | (--ip <ADDRESS> ) "Specify the IP of the server"
-                   | (--capacity <N>) "Specify the buffer capacity"
+                   | (-I <ADDRESS> | --ip <ADDRESS> ) "Specify the IP of the server"
+                   | (-C <N> | --capacity <N>) "Specify the buffer capacity"
                    ;
 
 <LISTEN-OPTIONS> ::= <CLIENT-OPTIONS>
-                   | (--dst <PATH>) "Specify the destination file"
+                   | (-d <PATH> | --dst <PATH>) "Specify the destination file"
                    ;
 
 <TALK-OPTIONS> ::= <CLIENT-OPTIONS>
-                 | (--src <PATH>) "Specify the source file"
+                 | (-s <PATH> | --src <PATH>) "Specify the source file"
                  ;

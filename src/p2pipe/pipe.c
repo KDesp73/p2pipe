@@ -24,7 +24,6 @@ int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity)
 
     pipe_init(pipe, capacity);
     pipe->mode = MODE_RCV;
-    storage_init(&pipe->storage, capacity ? capacity : DEFAULT_CAPACITY); 
 
     int sock = pipe_handshake(pipe, ip, port, capacity, MODE_RCV);
     if (sock < 0) {
@@ -65,6 +64,8 @@ bool pipe_read(Pipe* pipe, size_t n_bytes)
 void pipe_rcv_close(Pipe* pipe)
 {
     if (!pipe) return;
+
+    while(!pipe->end_received);
 
     thread_pool_wait(tp);
     pipe_free(pipe);
@@ -171,13 +172,16 @@ void pipe_snd_close(Pipe *pipe)
     Packet end = PACKET_END;
     if (!pipe_write_packet_sync(pipe, &end, NULL)) {
         WARN("Failed to send END packet");
-    } else {
-        INFO("Sent END packet");
     }
 
     pipe->running = false;
-    thread_pool_wait(tp); 
+    
+    if (tp) {
+        thread_pool_wake_all(tp);
+    }
 
+    thread_pool_wait(tp); 
+    
     if (pipe->buffer.count > 0) {
         WARN("There are %zu packets that have not been acknowledged and may be lost.", pipe->buffer.count);
     }

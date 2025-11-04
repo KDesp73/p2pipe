@@ -3,8 +3,10 @@
 #include <stdio.h>
 #include <string.h>
 #include "p2pipe/threads.h"
+#include "extern/logging.h"
 
-static void *worker_main(void *vpool) {
+static void *worker_main(void *vpool)
+{
     ThreadPool *p = (ThreadPool *)vpool;
 
     while (1) {
@@ -34,7 +36,8 @@ static void *worker_main(void *vpool) {
     return NULL;
 }
 
-ThreadPool *thread_pool_create(size_t num_threads) {
+ThreadPool *thread_pool_create(size_t num_threads)
+{
     if (num_threads == 0) num_threads = 1;
     ThreadPool *p = calloc(1, sizeof(*p));
     if (!p) return NULL;
@@ -65,7 +68,8 @@ ThreadPool *thread_pool_create(size_t num_threads) {
     return p;
 }
 
-bool thread_pool_submit(ThreadPool *p, TPTaskFn fn, void *arg) {
+bool thread_pool_submit(ThreadPool *p, TPTaskFn fn, void *arg)
+{
     if (!p || !fn) return false;
     Task *t = malloc(sizeof(*t));
     if (!t) return false;
@@ -92,19 +96,6 @@ void thread_pool_wait(ThreadPool *p)
 
     pthread_mutex_lock(&p->lock);
     while (p->task_count > 0) {
-        // Use a different condition variable for waiting on task completion
-        // If one doesn't exist, we must stick to the busy wait for now, 
-        // but it should ideally use a condition variable.
-        
-        // Sticking to the original pattern but keeping the lock held
-        // to avoid race, which is safer but still a busy wait.
-        
-        // Using sched_yield() while holding a lock is still generally bad,
-        // so the original logic of unlock/yield/lock is likely preferred 
-        // by the original author despite being a busy-wait.
-        
-        // To fix the potential race from the busy-wait without adding a new CV:
-        // We'll trust the original intent, but this is a potential efficiency issue.
         pthread_mutex_unlock(&p->lock);
         sched_yield();
         pthread_mutex_lock(&p->lock);
@@ -137,7 +128,16 @@ void thread_pool_shutdown(ThreadPool *p) {
     p->stopped = true;
 }
 
-void thread_pool_destroy(ThreadPool *p) {
+void thread_pool_wake_all(ThreadPool *p)
+{
+    if (!p) return;
+    pthread_mutex_lock(&p->lock);
+    pthread_cond_broadcast(&p->cond);
+    pthread_mutex_unlock(&p->lock);
+}
+
+void thread_pool_destroy(ThreadPool *p)
+{
     if (!p) return;
     thread_pool_shutdown(p);
     free(p->threads);
@@ -146,14 +146,16 @@ void thread_pool_destroy(ThreadPool *p) {
     free(p);
 }
 
-static inline size_t key_hash(uint64_t key, size_t table_size) {
+static inline size_t key_hash(uint64_t key, size_t table_size)
+{
     key ^= key >> 33;
     key *= 0xff51afd7ed558ccdULL;
     key ^= key >> 33;
     return (size_t)(key) & (table_size - 1);
 }
 
-OrderedExecutor *ordered_executor_create(ThreadPool *pool, size_t capacity_hint) {
+OrderedExecutor *ordered_executor_create(ThreadPool *pool, size_t capacity_hint)
+{
     OrderedExecutor *oe = calloc(1, sizeof(*oe));
     if (!oe) return NULL;
     oe->pool = pool;
@@ -168,7 +170,8 @@ OrderedExecutor *ordered_executor_create(ThreadPool *pool, size_t capacity_hint)
     return oe;
 }
 
-static KeyEntry *lookup_or_create_entry(OrderedExecutor *oe, uint64_t key) {
+static KeyEntry *lookup_or_create_entry(OrderedExecutor *oe, uint64_t key)
+{
     size_t idx = key_hash(key, oe->table_size);
     KeyEntry *e = oe->table[idx];
     KeyEntry *prev = NULL;
@@ -193,7 +196,8 @@ typedef struct drain_ctx {
     uint64_t key;
 } drain_ctx_t;
 
-static void drain_worker(void *v) {
+static void drain_worker(void *v)
+{
     drain_ctx_t *ctx = (drain_ctx_t *)v;
     OrderedExecutor *oe = ctx->oe;
     uint64_t key = ctx->key;
@@ -230,7 +234,8 @@ static void drain_worker(void *v) {
     }
 }
 
-bool ordered_executor_submit(OrderedExecutor *oe, uint64_t key, OETaskFn fn, void *arg) {
+bool ordered_executor_submit(OrderedExecutor *oe, uint64_t key, OETaskFn fn, void *arg)
+{
     if (!oe || !fn) return false;
     OETask *t = calloc(1, sizeof(*t));
     if (!t) return false;
@@ -242,6 +247,7 @@ bool ordered_executor_submit(OrderedExecutor *oe, uint64_t key, OETaskFn fn, voi
     if (oe->shutting_down) {
         pthread_mutex_unlock(&oe->lock);
         free(t);
+        WARN("Cannot submit. Shutting down...");
         return false;
     }
     KeyEntry *e = lookup_or_create_entry(oe, key);
@@ -290,14 +296,16 @@ bool ordered_executor_submit(OrderedExecutor *oe, uint64_t key, OETaskFn fn, voi
     return true;
 }
 
-void ordered_executor_shutdown(OrderedExecutor *oe) {
+void ordered_executor_shutdown(OrderedExecutor *oe)
+{
     if (!oe) return;
     pthread_mutex_lock(&oe->lock);
     oe->shutting_down = true;
     pthread_mutex_unlock(&oe->lock);
 }
 
-void ordered_executor_destroy(OrderedExecutor *oe) {
+void ordered_executor_destroy(OrderedExecutor *oe)
+{
     if (!oe) return;
     pthread_mutex_lock(&oe->lock);
     for (size_t i = 0; i < oe->table_size; ++i) {
