@@ -35,15 +35,16 @@ _p2pipe () {
     local words cword
     _get_comp_words_by_ref -n "$COMP_WORDBREAKS" words cword
 
-    declare -a literals=(serve --port listen --ip --help --dst talk --src -h --help -v --version)
+    declare -a literals=(serve --port --help listen --ip --capacity --dst talk --src -h --help -v --version)
     declare -a regexes=()
     declare -A literal_transitions=()
     declare -A nontail_transitions=()
-    literal_transitions[0]="([0]=1 [2]=2 [6]=3 [8]=4 [9]=4 [10]=4 [11]=4)"
-    literal_transitions[1]="([1]=4)"
-    literal_transitions[2]="([1]=4 [3]=4 [4]=4 [5]=5)"
-    literal_transitions[3]="([1]=4 [3]=4 [4]=4 [7]=5)"
-    declare -A match_anything_transitions=([5]=4)
+    literal_transitions[0]="([0]=1 [3]=2 [7]=3 [9]=4 [10]=4 [11]=4 [12]=4)"
+    literal_transitions[1]="([1]=9 [2]=1)"
+    literal_transitions[2]="([1]=10 [2]=2 [4]=11 [5]=12 [6]=13)"
+    literal_transitions[3]="([1]=5 [2]=3 [4]=6 [5]=7 [8]=8)"
+    literal_transitions[4]="([9]=4 [10]=4 [11]=4 [12]=4)"
+    declare -A match_anything_transitions=([5]=3 [7]=3 [8]=3 [9]=1 [12]=2 [13]=2 [10]=2 [11]=2 [6]=3)
     declare -A subword_transitions
 
     local state=0
@@ -80,11 +81,11 @@ _p2pipe () {
         return 1
     done
 
-    declare -A literal_transitions_level_0=([0]="0 2 6 8 10" [3]="1 3 4 7" [2]="1 3 4 5" [1]="1")
-    declare -A literal_transitions_level_1=([0]="9 11")
+    declare -A literal_transitions_level_0=([4]="9 11" [0]="0 3 7 9 11" [3]="1 2 4 5 8" [2]="1 2 4 5 6" [1]="1 2")
+    declare -A literal_transitions_level_1=([0]="10 12" [4]="10 12")
     declare -A subword_transitions_level_0=()
     declare -A subword_transitions_level_1=()
-    declare -A commands_level_0=([5]="0")
+    declare -A commands_level_0=([8]="0" [13]="0")
     declare -A commands_level_1=()
     declare -A nontail_commands_level_0=()
     declare -A nontail_regexes_level_0=()

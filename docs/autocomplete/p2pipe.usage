@@ -1,19 +1,21 @@
-p2pipe <COMMANDS> | [<OPTIONS>];
+p2pipe <COMMANDS> | [<OPTIONS>...] ;
 
-<COMMANDS> ::= (serve <SERVER-OPTIONS>) "Act as a server"
-			 | (listen <LISTEN-OPTIONS>) "Act as a receiver" 
-			 | (talk <TALK-OPTIONS>) "Act as a sender"
-			 ;
+<COMMANDS> ::= (serve [<SERVER-OPTIONS>...]) "Act as a server"
+             | (listen [<LISTEN-OPTIONS>...]) "Act as a receiver"
+             | (talk [<TALK-OPTIONS>...]) "Act as a sender"
+             ;
 
 <OPTIONS> ::= (-h || --help) "Prints the help message"
-			| (-v || --version) "Prints the project version"
-			;
+            | (-v || --version) "Prints the project version"
+            ;
 
-<SERVER-OPTIONS> ::= (--port) "Specify the port of the server";
+<SERVER-OPTIONS> ::= (--port <PORT>) "Specify the port of the server"
+                   | (--help) "Prints the help message"
+                   ;
 
 <CLIENT-OPTIONS> ::= <SERVER-OPTIONS>
-                   | (--ip) "Specify the ip of the server"
-                   | (--help) "Prints the help message"
+                   | (--ip <ADDRESS> ) "Specify the IP of the server"
+                   | (--capacity <N>) "Specify the buffer capacity"
                    ;
 
 <LISTEN-OPTIONS> ::= <CLIENT-OPTIONS>
@@ -21,5 +23,5 @@ p2pipe <COMMANDS> | [<OPTIONS>];
                    ;
 
 <TALK-OPTIONS> ::= <CLIENT-OPTIONS>
-                   | (--src <PATH>) "Specify the source file"
-                   ;
+                 | (--src <PATH>) "Specify the source file"
+                 ;

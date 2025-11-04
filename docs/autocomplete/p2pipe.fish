@@ -72,34 +72,37 @@ function _p2pipe
         set COMP_CWORD (count $COMP_WORDS)
     end
 
-    set literals serve --port listen --ip --help --dst talk --src -h --help -v --version
+    set literals serve --port --help listen --ip --capacity --dst talk --src -h --help -v --version
 
     set descrs
     set descrs[1] "Act as a server"
     set descrs[2] "Specify the port of the server"
-    set descrs[3] "Act as a receiver"
-    set descrs[4] "Specify the ip of the server"
-    set descrs[5] "Prints the help message"
-    set descrs[6] "Specify the destination file"
-    set descrs[7] "Act as a sender"
-    set descrs[8] "Specify the source file"
-    set descrs[9] "Prints the project version"
-    set descr_literal_ids 1 2 3 4 5 6 7 8 9 11
-    set descr_ids 1 2 3 4 5 6 7 8 5 9
+    set descrs[3] "Prints the help message"
+    set descrs[4] "Act as a receiver"
+    set descrs[5] "Specify the IP of the server"
+    set descrs[6] "Specify the buffer capacity"
+    set descrs[7] "Specify the destination file"
+    set descrs[8] "Act as a sender"
+    set descrs[9] "Specify the source file"
+    set descrs[10] "Prints the project version"
+    set descr_literal_ids 1 2 3 4 5 6 7 8 9 10 12
+    set descr_ids 1 2 3 4 5 6 7 8 9 3 10
     set regexes 
     set literal_transitions_inputs
     set nontail_transitions
-    set literal_transitions_inputs[1] "1 3 7 9 10 11 12"
+    set literal_transitions_inputs[1] "1 4 8 10 11 12 13"
     set literal_transitions_tos[1] "2 3 4 5 5 5 5"
-    set literal_transitions_inputs[2] 2
-    set literal_transitions_tos[2] 5
-    set literal_transitions_inputs[3] "2 4 5 6"
-    set literal_transitions_tos[3] "5 5 5 6"
-    set literal_transitions_inputs[4] "2 4 5 8"
-    set literal_transitions_tos[4] "5 5 5 6"
+    set literal_transitions_inputs[2] "2 3"
+    set literal_transitions_tos[2] "10 2"
+    set literal_transitions_inputs[3] "2 3 5 6 7"
+    set literal_transitions_tos[3] "11 3 12 13 14"
+    set literal_transitions_inputs[4] "2 3 5 6 9"
+    set literal_transitions_tos[4] "6 4 7 8 9"
+    set literal_transitions_inputs[5] "10 11 12 13"
+    set literal_transitions_tos[5] "5 5 5 5"
 
-    set match_anything_transitions_from 6
-    set match_anything_transitions_to 5
+    set match_anything_transitions_from 6 8 9 10 13 14 11 12 7
+    set match_anything_transitions_to 4 4 4 2 3 3 3 3 4
 
     set state 1
     set word_index 2
@@ -129,18 +132,18 @@ function _p2pipe
         return 1
     end
 
-    set literal_froms_level_0 1 4 3 2
-    set literal_inputs_level_0 "1 3 7 9 11|2 4 5 8|2 4 5 6|2"
-    set literal_froms_level_1 1
-    set literal_inputs_level_1 "10 12"
+    set literal_froms_level_0 5 1 4 3 2
+    set literal_inputs_level_0 "10 12|1 4 8 10 12|2 3 5 6 9|2 3 5 6 7|2 3"
+    set literal_froms_level_1 1 5
+    set literal_inputs_level_1 "11 13|11 13"
     set nontail_command_froms_level_0 
     set nontail_commands_level_0 
     set nontail_regexes_level_0 
     set nontail_command_froms_level_1 
     set nontail_commands_level_1 
     set nontail_regexes_level_1 
-    set command_froms_level_0 6
-    set commands_level_0 "0"
+    set command_froms_level_0 9 14
+    set commands_level_0 "0" "0"
     set command_froms_level_1 
     set commands_level_1 
 

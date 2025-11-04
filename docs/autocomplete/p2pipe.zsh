@@ -5,26 +5,28 @@ _p2pipe_cmd_0 () {
 }
 
 _p2pipe () {
-    declare -a literals=("serve" "--port" "listen" "--ip" "--help" "--dst" "talk" "--src" "-h" "--help" "-v" "--version")
+    declare -a literals=("serve" "--port" "--help" "listen" "--ip" "--capacity" "--dst" "talk" "--src" "-h" "--help" "-v" "--version")
     declare -A descrs=()
     descrs[0]="Act as a server"
     descrs[1]="Specify the port of the server"
-    descrs[2]="Act as a receiver"
-    descrs[3]="Specify the ip of the server"
-    descrs[4]="Prints the help message"
-    descrs[5]="Specify the destination file"
-    descrs[6]="Act as a sender"
-    descrs[7]="Specify the source file"
-    descrs[8]="Prints the project version"
-    declare -A descr_id_from_literal_id=([1]=0 [2]=1 [3]=2 [4]=3 [5]=4 [6]=5 [7]=6 [8]=7 [9]=4 [11]=8)
+    descrs[2]="Prints the help message"
+    descrs[3]="Act as a receiver"
+    descrs[4]="Specify the IP of the server"
+    descrs[5]="Specify the buffer capacity"
+    descrs[6]="Specify the destination file"
+    descrs[7]="Act as a sender"
+    descrs[8]="Specify the source file"
+    descrs[9]="Prints the project version"
+    declare -A descr_id_from_literal_id=([1]=0 [2]=1 [3]=2 [4]=3 [5]=4 [6]=5 [7]=6 [8]=7 [9]=8 [10]=2 [12]=9)
     declare -a regexes=()
     declare -A literal_transitions=()
-    literal_transitions[1]="([1]=2 [3]=3 [7]=4 [9]=5 [10]=5 [11]=5 [12]=5)"
-    literal_transitions[2]="([2]=5)"
-    literal_transitions[3]="([2]=5 [4]=5 [5]=5 [6]=6)"
-    literal_transitions[4]="([2]=5 [4]=5 [5]=5 [8]=6)"
+    literal_transitions[1]="([1]=2 [4]=3 [8]=4 [10]=5 [11]=5 [12]=5 [13]=5)"
+    literal_transitions[2]="([2]=10 [3]=2)"
+    literal_transitions[3]="([2]=11 [3]=3 [5]=12 [6]=13 [7]=14)"
+    literal_transitions[4]="([2]=6 [3]=4 [5]=7 [6]=8 [9]=9)"
+    literal_transitions[5]="([10]=5 [11]=5 [12]=5 [13]=5)"
     declare -A nontail_transitions=()
-    declare -A match_anything_transitions=([6]=5)
+    declare -A match_anything_transitions=([6]=4 [8]=4 [9]=4 [10]=2 [13]=3 [14]=3 [11]=3 [12]=3 [7]=4)
     declare -A subword_transitions=()
 
     declare state=1
@@ -79,8 +81,8 @@ _p2pipe () {
         return 1
     done
 
-    declare -A literal_transitions_level_0=([1]="1 3 7 9 11" [4]="2 4 5 8" [3]="2 4 5 6" [2]="2")
-    declare -A literal_transitions_level_1=([1]="10 12")
+    declare -A literal_transitions_level_0=([5]="10 12" [1]="1 4 8 10 12" [4]="2 3 5 6 9" [3]="2 3 5 6 7" [2]="2 3")
+    declare -A literal_transitions_level_1=([1]="11 13" [5]="11 13")
     declare -A subword_transitions_level_0=()
     declare -A subword_transitions_level_1=()
     declare -A commands_level_0=()
@@ -89,7 +91,7 @@ _p2pipe () {
     declare -A nontail_regexes_level_0=()
     declare -A nontail_commands_level_1=()
     declare -A nontail_regexes_level_1=()
-    declare -A specialized_commands_level_0=([6]="0")
+    declare -A specialized_commands_level_0=([9]="0" [14]="0")
     declare -A specialized_commands_level_1=()
 
     declare max_fallback_level=1
