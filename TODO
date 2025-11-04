@@ -1,4 +1,4 @@
-TODO: send/receive acks
-TODO: multithreaded sending/receiving
 TODO: resending packets if lost
 DONE: storage
+DONE: multithreaded sending/receiving
+DONE: send/receive acks

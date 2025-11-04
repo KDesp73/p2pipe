@@ -197,7 +197,7 @@ static void drain_worker(void *v) {
     drain_ctx_t *ctx = (drain_ctx_t *)v;
     OrderedExecutor *oe = ctx->oe;
     uint64_t key = ctx->key;
-    free(ctx);
+    if(ctx) free(ctx);
 
     while (1) {
         OETask *task = NULL;
