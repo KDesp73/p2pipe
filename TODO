@@ -1,5 +1,10 @@
 TODO: errno style error handling
 TODO: send and verify hash
+TODO: collect metrics
+TODO: log to file
+TODO: progress bar
+TODO: server handling multiple sessions in parallel
+TODO: receiver using existing session id
 DONE: storage
 DONE: multithreaded sending/receiving
 DONE: send/receive acks
