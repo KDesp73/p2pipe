@@ -3,6 +3,7 @@
 #include "p2pipe/metrics.h"
 #include "extern/logging.h"
 #include "p2pipe/packet.h"
+#include "p2pipe/version.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -184,7 +185,7 @@ static unsigned short get_available_udp_port(void)
 int pipe_handshake(Pipe* pipe, const char* ip, size_t port, const Handshake* handshake)
 {
     char payload[512];
-    snprintf(payload, sizeof(payload), "PROTO=1 TYPE=%s", pipe->mode == MODE_SND ? "SND" : "RCV");
+    snprintf(payload, sizeof(payload), "VERSION=%s TYPE=%s", VERSION_STRING, pipe->mode == MODE_SND ? "SND" : "RCV");
 
     char buf[1024];
     ssize_t n;
@@ -251,13 +252,17 @@ int pipe_handshake(Pipe* pipe, const char* ip, size_t port, const Handshake* han
              (parsed == 3) ? peer_info : "(none)");
 
         struct info {
-            unsigned long proto;
+            char* version;
             char* id;
         } info;
         char* token = strtok(peer_info, " ");
         while (token) {
-            if (strncmp(token, "PROTO=", 6) == 0) {
-                info.proto = strtoul(token + 6, NULL, 10);
+            if (strncmp(token, "VERSION=", 8) == 0) {
+                info.version = strdup(token + 8);
+                if(strcmp(info.version, VERSION_STRING) != 0) {
+                    WARN("Peer is using a different version: %s", info.version);
+                }
+                free(info.version);
             } else if (strncmp(token, "ID=", 3) == 0) {
                 info.id = strdup(token + 3);
                 metrics.id = info.id;

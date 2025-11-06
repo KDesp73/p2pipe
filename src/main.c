@@ -173,7 +173,7 @@ int main(int argc, char** argv)
                 run_help(command);
                 goto cleanup;
             case ARG_VERSION:
-                printf("p2p v%s\n", VERSION_STRING);
+                printf("p2pipe v%s\n", VERSION_STRING);
                 goto cleanup;
             case ARG_IP:
                 ctx.ip = strdup(optarg);
