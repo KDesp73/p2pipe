@@ -1,9 +1,9 @@
-TODO: send hash on handshake
-TODO: send payload length on handshake
 TODO: errno style error handling
-TODO: trade info on seperate handshake package
 TODO: send and verify hash
 DONE: storage
 DONE: multithreaded sending/receiving
 DONE: send/receive acks
 DONE: resending packets if lost
+DONE: send hash on handshake
+DONE: send payload length on handshake
+DONE: trade info on seperate handshake package
