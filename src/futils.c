@@ -1,6 +1,18 @@
 #include "futils.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
+
+
+size_t file_size(const char *path)
+{
+    struct stat st;
+    if (stat(path, &st) != 0) {
+        // Failed to stat the file
+        return 0;
+    }
+    return (size_t)st.st_size;
+}
 
 bool read_file_bytes(const char *path, void **out_data, size_t *out_len)
 {

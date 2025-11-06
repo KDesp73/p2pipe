@@ -66,6 +66,38 @@ bool listen_handler(Context context)
     return true;
 }
 
+#define LARGE_FILE_THRESHOLD (100 * 1024 * 1024)
+#define CHUNK_SIZE (1024 * 1024)
+
+bool stream_file(const char* path, Pipe* pipe) {
+    FILE* f = fopen(path, "rb");
+    if (!f) {
+        ERRO("Failed to open file '%s'", path);
+        return false;
+    }
+
+    void* buf = malloc(CHUNK_SIZE);
+    if (!buf) {
+        ERRO("Failed to allocate buffer");
+        fclose(f);
+        return false;
+    }
+
+    size_t nread;
+    while ((nread = fread(buf, 1, CHUNK_SIZE, f)) > 0) {
+        if (!pipe_write(pipe, buf, nread)) {
+            ERRO("Write failed while streaming '%s'", path);
+            free(buf);
+            fclose(f);
+            return false;
+        }
+    }
+
+    free(buf);
+    fclose(f);
+    return true;
+}
+
 bool talk_handler(Context context)
 {
     if (!validate_port(context.port)) {
@@ -81,36 +113,34 @@ bool talk_handler(Context context)
         return false;
     }
 
-    void* buffer = NULL;
-    size_t len = 0;
-    if (!read_file_bytes(context.src, &buffer, &len)) {
-        ERRO("Failed to read source file: %s", context.src);
-        return false;
-    }
-
-    // TODO: stream content if over a threshold
-
     Pipe pipe = {0};
-    int sock = pipe_snd_open(&pipe, context.ip, context.port,
-                             context.capacity ? context.capacity : DEFAULT_CAPACITY,
-                             buffer, len);
+    int sock = pipe_snd_open(
+            &pipe, context.ip, context.port,
+            context.capacity ? context.capacity : DEFAULT_CAPACITY,
+            NULL, 0 // no preloaded data
+            );
     if (sock <= 0) {
         pipe_snd_close(&pipe);
-        free(buffer);
         return false;
     }
 
-    if (!pipe_write(&pipe, buffer, len)) {
-        ERRO("Failed sending payload from '%s'", context.src);
+    bool ok;
+    if (file_size(context.src) > LARGE_FILE_THRESHOLD) {
+        ok = stream_file(context.src, &pipe);
+    } else {
+        void* buffer = NULL;
+        size_t len = 0;
+        if (!read_file_bytes(context.src, &buffer, &len)) {
+            ERRO("Failed to read source file: %s", context.src);
+            pipe_snd_close(&pipe);
+            return false;
+        }
+        ok = pipe_write(&pipe, buffer, len);
         free(buffer);
-        pipe_snd_close(&pipe);
-        return false;
     }
 
-    free(buffer);
     pipe_snd_close(&pipe);
-
-    return true;
+    return ok;
 }
 
 
