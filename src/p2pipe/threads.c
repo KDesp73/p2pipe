@@ -112,6 +112,15 @@ void thread_pool_join(ThreadPool *p)
     }
 }
 
+void thread_pool_wake_all(ThreadPool *p)
+{
+    if (!p) return;
+    pthread_mutex_lock(&p->lock);
+    pthread_cond_broadcast(&p->cond);
+    pthread_mutex_unlock(&p->lock);
+}
+
+
 void thread_pool_shutdown(ThreadPool *p) {
     if (!p) return;
     pthread_mutex_lock(&p->lock);
@@ -137,204 +146,33 @@ void thread_pool_shutdown(ThreadPool *p) {
     p->stopped = true;
 }
 
-void thread_pool_wake_all(ThreadPool *p)
-{
-    if (!p) return;
-    pthread_mutex_lock(&p->lock);
-    pthread_cond_broadcast(&p->cond);
-    pthread_mutex_unlock(&p->lock);
+static bool is_current_thread_in_pool(ThreadPool *p) {
+    pthread_t self = pthread_self();
+    for (size_t i = 0; i < p->n_threads; ++i) {
+        if (pthread_equal(self, p->threads[i])) return true;
+    }
+    return false;
 }
 
 void thread_pool_destroy(ThreadPool *p)
 {
     if (!p) return;
+
+    if (is_current_thread_in_pool(p)) {
+        ERRO("thread_pool_destroy(): called from a worker thread; refuse to destroy");
+        return;
+    }
+
     thread_pool_shutdown(p);
+    thread_pool_free(p);
+}
+
+void thread_pool_free(ThreadPool *p)
+{
+    if(!p) return;
+
     free(p->threads);
     pthread_mutex_destroy(&p->lock);
     pthread_cond_destroy(&p->cond);
     free(p);
 }
-
-static inline size_t key_hash(uint64_t key, size_t table_size)
-{
-    key ^= key >> 33;
-    key *= 0xff51afd7ed558ccdULL;
-    key ^= key >> 33;
-    return (size_t)(key) & (table_size - 1);
-}
-
-OrderedExecutor *ordered_executor_create(ThreadPool *pool, size_t capacity_hint)
-{
-    OrderedExecutor *oe = calloc(1, sizeof(*oe));
-    if (!oe) return NULL;
-    oe->pool = pool;
-    pthread_mutex_init(&oe->lock, NULL);
-    size_t ts = 1;
-    while (ts < capacity_hint) ts <<= 1;
-    if (ts < 16) ts = 16;
-    oe->table_size = ts;
-    oe->table = calloc(ts, sizeof(KeyEntry*));
-    if (!oe->table) { free(oe); return NULL; }
-    oe->shutting_down = false;
-    return oe;
-}
-
-static KeyEntry *lookup_or_create_entry(OrderedExecutor *oe, uint64_t key)
-{
-    size_t idx = key_hash(key, oe->table_size);
-    KeyEntry *e = oe->table[idx];
-    KeyEntry *prev = NULL;
-    while (e) {
-        if (e->key == key) return e;
-        prev = e;
-        e = e->next;
-    }
-    KeyEntry *ne = calloc(1, sizeof(*ne));
-    if (!ne) return NULL;
-    ne->key = key;
-    ne->head = ne->tail = NULL;
-    ne->active = false;
-    ne->next = NULL;
-    if (prev) prev->next = ne;
-    else oe->table[idx] = ne;
-    return ne;
-}
-
-typedef struct drain_ctx {
-    OrderedExecutor *oe;
-    uint64_t key;
-} drain_ctx_t;
-
-static void drain_worker(void *v)
-{
-    drain_ctx_t *ctx = (drain_ctx_t *)v;
-    OrderedExecutor *oe = ctx->oe;
-    uint64_t key = ctx->key;
-    if(ctx) free(ctx);
-
-    while (1) {
-        OETask *task = NULL;
-        pthread_mutex_lock(&oe->lock);
-        if (oe->shutting_down) {
-            KeyEntry *e = lookup_or_create_entry(oe, key); // should exist
-            if (e) e->active = false;
-            pthread_mutex_unlock(&oe->lock);
-            return;
-        }
-
-        size_t idx = key_hash(key, oe->table_size);
-        KeyEntry *e = oe->table[idx];
-        while (e && e->key != key) e = e->next;
-        if (!e || !e->head) {
-            // no tasks, mark inactive and exit
-            if (e) e->active = false;
-            pthread_mutex_unlock(&oe->lock);
-            return;
-        }
-        // pop head
-        task = e->head;
-        e->head = task->next;
-        if (!e->head) e->tail = NULL;
-        pthread_mutex_unlock(&oe->lock);
-
-        // execute outside lock
-        task->fn(task->arg);
-        free(task);
-    }
-}
-
-bool ordered_executor_submit(OrderedExecutor *oe, uint64_t key, OETaskFn fn, void *arg)
-{
-    if (!oe || !fn) return false;
-    OETask *t = calloc(1, sizeof(*t));
-    if (!t) return false;
-    t->fn = fn;
-    t->arg = arg;
-    t->next = NULL;
-
-    pthread_mutex_lock(&oe->lock);
-    if (oe->shutting_down) {
-        pthread_mutex_unlock(&oe->lock);
-        free(t);
-        WARN("Cannot submit. Shutting down...");
-        return false;
-    }
-    KeyEntry *e = lookup_or_create_entry(oe, key);
-    if (!e) {
-        pthread_mutex_unlock(&oe->lock);
-        free(t);
-        return false;
-    }
-    if (e->tail) e->tail->next = t;
-    else e->head = t;
-    e->tail = t;
-
-    if (!e->active) {
-        e->active = true;
-        drain_ctx_t *ctx = malloc(sizeof(*ctx));
-        if (!ctx) {
-            OETask **pp = &e->head;
-            while (*pp && *pp != t) pp = &(*pp)->next;
-            if (*pp == t) {
-                *pp = t->next;
-                if (!e->head) e->tail = NULL;
-            }
-            pthread_mutex_unlock(&oe->lock);
-            free(t);
-            return false;
-        }
-        ctx->oe = oe;
-        ctx->key = key;
-        bool ok = thread_pool_submit(oe->pool, drain_worker, ctx);
-        if (!ok) {
-            free(ctx);
-            OETask **pp = &e->head;
-            while (*pp && *pp != t) pp = &(*pp)->next;
-            if (*pp == t) {
-                *pp = t->next;
-                if (!e->head) e->tail = NULL;
-            }
-            e->active = false;
-            pthread_mutex_unlock(&oe->lock);
-            free(t);
-            return false;
-        }
-    }
-
-    pthread_mutex_unlock(&oe->lock);
-    return true;
-}
-
-void ordered_executor_shutdown(OrderedExecutor *oe)
-{
-    if (!oe) return;
-    pthread_mutex_lock(&oe->lock);
-    oe->shutting_down = true;
-    pthread_mutex_unlock(&oe->lock);
-}
-
-void ordered_executor_destroy(OrderedExecutor *oe)
-{
-    if (!oe) return;
-    pthread_mutex_lock(&oe->lock);
-    for (size_t i = 0; i < oe->table_size; ++i) {
-        KeyEntry *e = oe->table[i];
-        while (e) {
-            KeyEntry *nx = e->next;
-            OETask *t = e->head;
-            while (t) {
-                OETask *tn = t->next;
-                free(t);
-                t = tn;
-            }
-            free(e);
-            e = nx;
-        }
-    }
-    free(oe->table);
-    pthread_mutex_unlock(&oe->lock);
-
-    pthread_mutex_destroy(&oe->lock);
-    free(oe);
-}
-

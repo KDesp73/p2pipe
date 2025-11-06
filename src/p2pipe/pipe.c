@@ -16,10 +16,9 @@
 #include <string.h>
 #include <unistd.h>
 
-#define TIMES(n) for(size_t i = 0; i < (n); i++)
+#define TIMES(n) for(size_t i = 0; i < 1; i++)
 
 ThreadPool* tp = NULL;
-OrderedExecutor* oe = NULL;
 
 int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity)
 {
@@ -78,16 +77,16 @@ void pipe_rcv_close(Pipe* pipe)
     while(!pipe->end_received) {
         usleep(1000);
     }
-    
-    pipe->running = false;
-    pthread_cond_broadcast(&pipe->storage_cond);
 
     if (pipe->sock_fd >= 0) {
-        close(pipe->sock_fd); 
+        shutdown(pipe->sock_fd, SHUT_RDWR);
+        close(pipe->sock_fd);
         pipe->sock_fd = -1;
     }
 
-    thread_pool_wait(tp);
+    pipe->running = false;
+    pthread_cond_broadcast(&pipe->storage_cond);
+
     pipe_free(pipe);
     INFO("Pipe receiver closed");
 }
@@ -116,6 +115,17 @@ int pipe_snd_open(Pipe* pipe, const char* ip, size_t port, size_t capacity, void
     return sock;
 }
 
+typedef struct {
+    Pipe *pipe;
+    Packet packet;
+} SendTaskArg;
+
+static void send_packet_task(void *arg) {
+    SendTaskArg *t = arg;
+    pipe_write_packet_async(t->pipe, &t->packet, NULL);
+    free(t);
+}
+
 bool pipe_write(Pipe* pipe, void* payload, size_t len)
 {
     if (!pipe || pipe->mode != MODE_SND || pipe->sock_fd < 0)
@@ -123,22 +133,25 @@ bool pipe_write(Pipe* pipe, void* payload, size_t len)
 
     uint8_t* data = payload;
     size_t offset = 0;
-    
-    uint32_t seq = pipe->seq; 
+    uint32_t seq = pipe->seq;
 
     while (offset < len) {
-        if(!pipe->handshake_completed) continue;
+        if(!pipe->handshake_completed)
+            continue;
+
         Packet packet = {0};
         packet.signals = SIGNAL_PAYLOAD;
         packet.seq = seq++;
-        packet.len = (len - offset) < PACKET_BUFFER_SIZE ? (len - offset) : PACKET_BUFFER_SIZE;
+        packet.len = (len - offset) < PACKET_BUFFER_SIZE
+            ? (len - offset)
+            : PACKET_BUFFER_SIZE;
         packet.last_sent_ms = current_time_ms();
         memcpy(packet.data, data + offset, packet.len);
 
         pthread_mutex_lock(&pipe->ack_lock);
-
         while (pipe->buffer.count >= pipe->buffer.capacity) {
-            WARN("Buffer full (%zu/%zu). Waiting for ACKs...", pipe->buffer.count, pipe->buffer.capacity);
+            WARN("Buffer full (%zu/%zu). Waiting for ACKs...",
+                 pipe->buffer.count, pipe->buffer.capacity);
             pthread_cond_wait(&pipe->ack_cond, &pipe->ack_lock);
         }
 
@@ -147,18 +160,23 @@ bool pipe_write(Pipe* pipe, void* payload, size_t len)
             pthread_mutex_unlock(&pipe->ack_lock);
             return false;
         }
+        pthread_mutex_unlock(&pipe->ack_lock);
 
-        pthread_mutex_unlock(&pipe->ack_lock); 
+        // --- Submit packet send as a task ---
+        SendTaskArg *task_arg = malloc(sizeof(SendTaskArg));
+        task_arg->pipe = pipe;
+        task_arg->packet = packet;
 
-        if(!pipe_write_packet_async(pipe, &packet, NULL)) {
-           ERRO("Could not submit packet for sending");
-           continue;
+        if (!thread_pool_submit(tp, send_packet_task, task_arg)) {
+            ERRO("Failed to submit send task");
+            free(task_arg);
+            return false;
         }
 
         offset += packet.len;
     }
 
-    pipe->seq = seq; 
+    pipe->seq = seq;
     return true;
 }
 
@@ -207,10 +225,16 @@ void pipe_snd_close(Pipe *pipe)
     if (!pipe) return;
 
     pipe_flush(pipe);
-    
+
     Packet end = PACKET_END;
     if (!pipe_write_packet_sync(pipe, &end, NULL)) {
         WARN("Failed to send END packet synchronously.");
+    }
+
+    if (pipe->sock_fd >= 0) {
+        shutdown(pipe->sock_fd, SHUT_RDWR);
+        close(pipe->sock_fd);
+        pipe->sock_fd = -1;
     }
     
     pipe->running = false;
@@ -218,15 +242,11 @@ void pipe_snd_close(Pipe *pipe)
 
     pthread_cond_broadcast(&pipe->ack_cond);
     
-    if (pipe->sock_fd >= 0) {
-        close(pipe->sock_fd); 
-        pipe->sock_fd = -1;
-    }
-    
     if (pipe->buffer.count > 0) {
         WARN("There are %zu packets that have not been acknowledged and may be lost.", pipe->buffer.count);
     }
     
     pipe_free(pipe);
+
     INFO("Pipe sender closed");
 }

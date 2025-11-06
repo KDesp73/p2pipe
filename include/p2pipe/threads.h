@@ -34,39 +34,8 @@ void thread_pool_join(ThreadPool *p);
 void thread_pool_shutdown(ThreadPool *p);
 void thread_pool_destroy(ThreadPool *p);
 void thread_pool_wake_all(ThreadPool *p);
-
-
-typedef void (*OETaskFn)(void *arg);
-typedef struct oe_task {
-    OETaskFn fn;
-    void *arg;
-    struct oe_task *next;
-} OETask;
-
-typedef struct key_entry {
-    uint64_t key;
-    OETask *head;
-    OETask *tail;
-    bool active;
-    struct key_entry *next;
-} KeyEntry;
-
-typedef struct {
-    ThreadPool *pool;
-
-    pthread_mutex_t lock;
-    size_t table_size;
-    KeyEntry **table;
-
-    bool shutting_down;
-} OrderedExecutor;
-
-OrderedExecutor *ordered_executor_create(ThreadPool *pool, size_t capacity_hint);
-bool ordered_executor_submit(OrderedExecutor *oe, uint64_t key, OETaskFn fn, void *arg);
-void ordered_executor_shutdown(OrderedExecutor *oe);
-void ordered_executor_destroy(OrderedExecutor *oe);
+void thread_pool_free(ThreadPool *p);
 
 extern ThreadPool* tp;
-extern OrderedExecutor* oe;
 
 #endif // THREADS_H

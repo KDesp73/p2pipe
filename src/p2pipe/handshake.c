@@ -260,11 +260,11 @@ int pipe_handshake(Pipe* pipe, const char* ip, size_t port, const Handshake* han
                 info.proto = strtoul(token + 6, NULL, 10);
             } else if (strncmp(token, "ID=", 3) == 0) {
                 info.id = strdup(token + 3);
+                metrics.id = info.id;
             }
             token = strtok(NULL, " ");
         }
 
-        metrics.id = info.id;
 
         struct sockaddr_in peer_addr = {0};
         peer_addr.sin_family = AF_INET;

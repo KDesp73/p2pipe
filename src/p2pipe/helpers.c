@@ -63,35 +63,19 @@ void retransmission_thread(void* arg)
 
 bool threads_init(void)
 {
-    if (tp && oe) return true;
+    if (tp) return true;
 
     tp = thread_pool_create(16);
     if (!tp) return false;
-
-    oe = ordered_executor_create(tp, 64);
-    if (!oe) {
-        thread_pool_destroy(tp);
-        tp = NULL;
-        return false;
-    }
 
     return true;
 }
 
 void threads_shutdown(void)
 {
-    if (oe) {
-        ordered_executor_shutdown(oe); 
-    }
-
     if (tp) {
         thread_pool_destroy(tp);
         tp = NULL;
-    }
-
-    if (oe) {
-        ordered_executor_destroy(oe);
-        oe = NULL;
     }
 }
 
@@ -362,14 +346,23 @@ void packet_listener(void* arg)
     uint8_t buf[PACKET_BUFFER_SIZE + 9]; // header + data
 
     while (pipe->running) { 
-        if(pipe->sock_fd <= 0) continue;
+        if(pipe->sock_fd <= 0 && pipe->running) continue;
         ssize_t bytes = recvfrom(pipe->sock_fd, buf, sizeof(buf), 0,
                                  (struct sockaddr*)&src_addr, &addrlen);
 
         if (bytes < 0) {
-            // ... (error handling) ...
+            if(!pipe->running) break;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                continue; 
+            }
+            ERRO("Critical recvfrom error: %s", strerror(errno));
+            pipe->running = false;
+            return;
         }
-        if (bytes == 0) continue;
+        if (bytes == 0){
+            if(!pipe->running) break;
+            continue;
+        }
 
         metrics.packets_received++;
 
@@ -384,7 +377,6 @@ void packet_listener(void* arg)
             continue;
         }
 
-        // --- Start of critical section for logging fix ---
         if (pkt_copy->signals & SIGNAL_END) {
             INFO("Received END signal");
             free(pkt_copy);
@@ -414,20 +406,18 @@ void packet_listener(void* arg)
         job->packet = pkt_copy;
         job->src = src_addr;
 
-        uint64_t key = (((uint64_t)ntohl(src_addr.sin_addr.s_addr)) << 16) ^ (uint64_t)ntohs(src_addr.sin_port);
-
         unsigned int seq_num = pkt_copy->seq;
         unsigned int pkt_len = pkt_copy->len;
         
-        if (!ordered_executor_submit(oe, key, recv_job_fn, job)) {
+        if (!thread_pool_submit(tp, recv_job_fn, job)) {
             WARN("Failed to submit RecvJob for packet #%u to OE. Running inline.", seq_num);
             recv_job_fn(job);
             continue;
         }
 
         INFO("Queued data packet #%u (%u bytes) from %s:%d.",
-             seq_num, // SAFE access
-             pkt_len, // SAFE access
+             seq_num,
+             pkt_len,
              inet_ntoa(src_addr.sin_addr),
              ntohs(src_addr.sin_port));
     }
