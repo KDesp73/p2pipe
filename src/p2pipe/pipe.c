@@ -1,6 +1,7 @@
 #include "p2pipe/pipe.h"
 #include "extern/logging.h"
 #include "p2pipe/buffer.h"
+#include "p2pipe/handshake.h"
 #include "p2pipe/packet.h"
 #include "p2pipe/storage.h"
 #include "p2pipe/helpers.h"
@@ -15,6 +16,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#define TIMES(n) for(size_t i = 0; i < (n); i++)
+
 ThreadPool* tp = NULL;
 OrderedExecutor* oe = NULL;
 
@@ -24,14 +27,21 @@ int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity)
 
     pipe_init(pipe, capacity);
     pipe->mode = MODE_RCV;
+    pipe->running = true;
 
-    int sock = pipe_handshake(pipe, ip, port, capacity, MODE_RCV);
+    TIMES(3) thread_pool_submit(tp, packet_listener, pipe);
+
+    Handshake handshake = {
+        .buffer_cap = capacity,
+        .payload_len = 0,
+        .hash = 0
+    };
+    int sock = pipe_handshake(pipe, ip, port, &handshake);
     if (sock < 0) {
         pipe_free(pipe);
         return -1;
     }
-    thread_pool_submit(tp, packet_listener, pipe);
-    pipe->running = true;
+
     return sock;
 }
 
@@ -43,7 +53,7 @@ bool pipe_read(Pipe* pipe, size_t n_bytes)
     if (n_bytes == 0) return true;
 
     pthread_mutex_lock(&pipe->storage_lock);
-    
+
     while (pipe->storage.count == 0 && pipe->running) {
         INFO("Pipe read blocking: Waiting for data...");
         pthread_cond_wait(&pipe->storage_cond, &pipe->storage_lock);
@@ -64,22 +74,46 @@ bool pipe_read(Pipe* pipe, size_t n_bytes)
 void pipe_rcv_close(Pipe* pipe)
 {
     if (!pipe) return;
+    
+    while(!pipe->end_received) {
+        usleep(1000);
+    }
+    
+    pipe->running = false;
+    pthread_cond_broadcast(&pipe->storage_cond);
 
-    while(!pipe->end_received);
+    if (pipe->sock_fd >= 0) {
+        close(pipe->sock_fd); 
+        pipe->sock_fd = -1;
+    }
 
     thread_pool_wait(tp);
     pipe_free(pipe);
     INFO("Pipe receiver closed");
 }
 
-int pipe_snd_open(Pipe* pipe, const char* ip, size_t port, size_t capacity)
+int pipe_snd_open(Pipe* pipe, const char* ip, size_t port, size_t capacity, void* payload, size_t len)
 {
     pipe_init(pipe, capacity);
     pipe->mode = MODE_SND;
     pipe->running = true;
-    thread_pool_submit(tp, ack_listener, pipe);
 
-    return pipe_handshake(pipe, ip, port, capacity, MODE_SND);
+    TIMES(3) thread_pool_submit(tp, packet_listener, pipe);
+
+    Handshake handshake = {
+        .buffer_cap = capacity,
+        .payload_len = len,
+        .hash = compute_fnv1a_hash(payload, len)
+    };
+    int sock = pipe_handshake(pipe, ip, port, &handshake);
+    if (sock < 0) {
+        pipe_free(pipe);
+        return -1;
+    }
+
+    TIMES(3) thread_pool_submit(tp, retransmission_thread, pipe);
+
+    return sock;
 }
 
 bool pipe_write(Pipe* pipe, void* payload, size_t len)
@@ -93,10 +127,12 @@ bool pipe_write(Pipe* pipe, void* payload, size_t len)
     uint32_t seq = pipe->seq; 
 
     while (offset < len) {
+        if(!pipe->handshake_completed) continue;
         Packet packet = {0};
         packet.signals = SIGNAL_PAYLOAD;
         packet.seq = seq++;
         packet.len = (len - offset) < PACKET_BUFFER_SIZE ? (len - offset) : PACKET_BUFFER_SIZE;
+        packet.last_sent_ms = current_time_ms();
         memcpy(packet.data, data + offset, packet.len);
 
         pthread_mutex_lock(&pipe->ack_lock);
@@ -114,7 +150,10 @@ bool pipe_write(Pipe* pipe, void* payload, size_t len)
 
         pthread_mutex_unlock(&pipe->ack_lock); 
 
-        pipe_write_packet_async(pipe, &packet, NULL);
+        if(!pipe_write_packet_async(pipe, &packet, NULL)) {
+           ERRO("Could not submit packet for sending");
+           continue;
+        }
 
         offset += packet.len;
     }
@@ -125,7 +164,7 @@ bool pipe_write(Pipe* pipe, void* payload, size_t len)
 
 bool pipe_flush(Pipe* pipe)
 {
-    if (!pipe || pipe->mode != MODE_SND || pipe->sock_fd < 0) {
+    if (!pipe || pipe->mode != MODE_SND || pipe->sock_fd <= 0) {
         return false;
     }
 
@@ -171,16 +210,18 @@ void pipe_snd_close(Pipe *pipe)
     
     Packet end = PACKET_END;
     if (!pipe_write_packet_sync(pipe, &end, NULL)) {
-        WARN("Failed to send END packet");
+        WARN("Failed to send END packet synchronously.");
     }
-
-    pipe->running = false;
     
-    if (tp) {
-        thread_pool_wake_all(tp);
-    }
+    pipe->running = false;
+    pipe->retransmit_running = false;
 
-    thread_pool_wait(tp); 
+    pthread_cond_broadcast(&pipe->ack_cond);
+    
+    if (pipe->sock_fd >= 0) {
+        close(pipe->sock_fd); 
+        pipe->sock_fd = -1;
+    }
     
     if (pipe->buffer.count > 0) {
         WARN("There are %zu packets that have not been acknowledged and may be lost.", pipe->buffer.count);

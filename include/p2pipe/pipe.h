@@ -23,9 +23,14 @@ typedef struct {
     struct sockaddr_in peer_addr;
     Storage storage;
     uint32_t seq;
+    uint64_t hash;
+    size_t payload_len;
 
     bool running;
+    bool retransmit_running;
+    bool handshake_completed;
     bool end_received;
+
     pthread_mutex_t ack_lock;
     pthread_cond_t ack_cond;
     pthread_mutex_t storage_lock;
@@ -36,7 +41,7 @@ int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity);
 bool pipe_read(Pipe* pipe, size_t n_bytes);
 void pipe_rcv_close(Pipe* pipe);
 
-int pipe_snd_open(Pipe* pipe, const char* ip, size_t port, size_t capacity);
+int pipe_snd_open(Pipe* pipe, const char* ip, size_t port, size_t capacity, void* payload, size_t len);
 bool pipe_write(Pipe* pipe, void* payload, size_t len);
 bool pipe_flush(Pipe* pipe);
 void pipe_snd_close(Pipe* pipe);

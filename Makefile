@@ -42,7 +42,7 @@ OBJ_FILES = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRC_FILES))
 .DEFAULT_GOAL := help
 
 # Total source file count
-TOTAL_FILES := $(words $(SRC_FILES))
+TOTAL_FILES := $(words $(SRC_LIB_FILES))
 
 # Counter to track progress
 counter = 0

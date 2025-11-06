@@ -103,6 +103,15 @@ void thread_pool_wait(ThreadPool *p)
     pthread_mutex_unlock(&p->lock);
 }
 
+void thread_pool_join(ThreadPool *p)
+{
+    if (!p) return;
+
+    if (!p->stopped) {
+        thread_pool_shutdown(p);
+    }
+}
+
 void thread_pool_shutdown(ThreadPool *p) {
     if (!p) return;
     pthread_mutex_lock(&p->lock);

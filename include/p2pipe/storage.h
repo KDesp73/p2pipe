@@ -12,6 +12,7 @@ typedef struct {
 
     FILE* file_out;
     uint32_t next_expected_seq;
+    bool stream_data;
 } Storage;
 
 bool storage_init(Storage* storage, size_t capacity, const char* dest_path, uint32_t initial_seq);

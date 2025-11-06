@@ -3,8 +3,8 @@
 #include "futils.h"
 #include "p2pipe/metrics.h"
 #include "p2pipe/storage.h"
-#include "p2pipe/threads.h"
 #include "validation.h"
+#include "p2pipe/bootstrap.h"
 #include <bits/getopt_core.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,7 +13,6 @@
 #define CLI_IMPLEMENTATION
 #include "extern/cli.h"
 #include "extern/logging.h"
-#include "p2pipe/udp.h"
 #include "p2pipe/pipe.h"
 #include "p2pipe/version.h"
 #include "cli.h"
@@ -51,6 +50,7 @@ bool listen_handler(Context context)
     }
 
     storage_init(&pipe.storage, context.capacity ? context.capacity : DEFAULT_CAPACITY, context.dst, pipe.seq); 
+    pipe.storage.stream_data = true;
 
     INFO("Listening for packets...");
 
@@ -81,19 +81,22 @@ bool talk_handler(Context context)
         return false;
     }
 
-    Pipe pipe = {0};
-    int sock = pipe_snd_open(&pipe, context.ip, context.port,
-                             context.capacity ? context.capacity : DEFAULT_CAPACITY);
-    if (sock <= 0) {
-        pipe_snd_close(&pipe);
-        return false;
-    }
-
     void* buffer = NULL;
     size_t len = 0;
     if (!read_file_bytes(context.src, &buffer, &len)) {
         ERRO("Failed to read source file: %s", context.src);
+        return false;
+    }
+
+    // TODO: stream content if over a threshold
+
+    Pipe pipe = {0};
+    int sock = pipe_snd_open(&pipe, context.ip, context.port,
+                             context.capacity ? context.capacity : DEFAULT_CAPACITY,
+                             buffer, len);
+    if (sock <= 0) {
         pipe_snd_close(&pipe);
+        free(buffer);
         return false;
     }
 

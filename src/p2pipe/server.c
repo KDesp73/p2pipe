@@ -5,7 +5,6 @@
 #include <time.h>
 #include <unistd.h>
 #include "p2pipe/id.h"
-#include "p2pipe/udp.h"
 
 #define BUFSIZE 2048
 
@@ -48,7 +47,7 @@ int server(int port) {
 
         char *info = buf + 10;
         char type[8] = {0};
-        if (sscanf(info, "%*s %*s TYPE=%7s", type) != 1) {
+        if (sscanf(info, "%*s TYPE=%7s", type) != 1) {
             const char *r = "ERR malformed TYPE\n";
             sendto(sock, r, strlen(r), 0, (struct sockaddr*)&cli, clen);
             continue;

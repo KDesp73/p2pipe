@@ -1,119 +1,64 @@
 #include <errno.h>
 #include <pthread.h>
 #include "extern/logging.h"
+#include "p2pipe/handshake.h"
 #include "p2pipe/metrics.h"
+#include "p2pipe/packet.h"
 #include "p2pipe/pipe.h"
 #include "p2pipe/threads.h"
-#include "p2pipe/udp.h"
 #include <arpa/inet.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 #include <unistd.h>
 #include "p2pipe/helpers.h"
 
-int pipe_handshake(Pipe* pipe, const char* ip, size_t port, size_t capacity, PipeMode mode)
+#define RETRANSMISSION_TIMEOUT_MS 500
+
+long long current_time_ms()
 {
-    char payload[512];
-    snprintf(payload, sizeof(payload), "BUF=%zu PROTO=1 TYPE=%s", capacity, mode == MODE_SND ? "SND" : "RCV");
+    struct timeval te; 
+    gettimeofday(&te, NULL);
+    return te.tv_sec*1000LL + te.tv_usec/1000;
+}
 
-    char buf[1024];
-    ssize_t n;
-    int sock = -1;
-    unsigned short local_port = get_available_udp_port();
+void retransmission_thread(void* arg)
+{
+    Pipe* pipe = (Pipe*)arg;
 
-    n = udp_handshake_blocking(ip, port, payload, buf, sizeof(buf),
-                               3, 5, local_port, &sock);
-    if (n <= 0) {
-        ERRO("Initial handshake failed or timed out");
-        if (sock >= 0) close(sock);
-        return -1;
-    }
+    pipe->retransmit_running = true;
+    INFO("Retransmission thread started.");
 
-    buf[n] = '\0';
-    if (buf[n - 1] == '\n') buf[n - 1] = '\0';
+    while (pipe->retransmit_running) {
+        usleep(RETRANSMISSION_TIMEOUT_MS * 1000 / 2);
 
+        pthread_mutex_lock(&pipe->ack_lock);
 
-    if (strcmp(buf, "WAIT") == 0) {
-        INFO("Server replied WAIT — waiting for peer...");
-
-        for (;;) {
-            struct sockaddr_storage from;
-            socklen_t fromlen = sizeof(from);
-
-            struct timeval tv = { .tv_sec = 60, .tv_usec = 0 };
-            fd_set rfds;
-            FD_ZERO(&rfds);
-            FD_SET(sock, &rfds);
-
-            int rv = select(sock + 1, &rfds, NULL, NULL, &tv);
-            if (rv > 0 && FD_ISSET(sock, &rfds)) {
-                ssize_t r = recvfrom(sock, buf, sizeof(buf) - 1, 0,
-                                     (struct sockaddr*)&from, &fromlen);
-                if (r <= 0) continue;
-                buf[r] = '\0';
-                if (strncmp(buf, "PEER ", 5) == 0) break;
-            } else if (rv == 0) {
-                ERRO("Timeout while waiting for peer info");
-                close(sock);
-                return -1;
-            } else {
-                perror("select");
-                close(sock);
-                return -1;
+        if (pipe->buffer.count > 0) {
+            long long now = current_time_ms();
+            size_t retransmitted_count = 0;
+            
+            for (size_t i = 0; i < pipe->buffer.capacity; i++) {
+                Packet* pkt = &pipe->buffer.items[i];
+                if (pkt != NULL && (now - pkt->last_sent_ms > RETRANSMISSION_TIMEOUT_MS)) {
+                    INFO("Retransmitting packet #%u (Timeout: %lldms).", pkt->seq, now - pkt->last_sent_ms);
+                    if (pipe_write_packet_async(pipe, pkt, NULL)) {
+                        pkt->last_sent_ms = now;
+                        retransmitted_count++;
+                    }
+                }
+            }
+            
+            if(retransmitted_count > 0) {
+                WARN("Retransmitted %zu packets.", retransmitted_count);
             }
         }
+
+        pthread_mutex_unlock(&pipe->ack_lock);
     }
-
-    if (strncmp(buf, "PEER ", 5) == 0) {
-        char peer_ip[INET_ADDRSTRLEN] = {0};
-        int peer_port = 0;
-        char peer_info[512] = {0};
-
-        int parsed = sscanf(buf + 5, "%15s %d %511[^\n]", peer_ip, &peer_port, peer_info);
-        if (parsed < 2) {
-            ERRO("Malformed PEER line: %s", buf);
-            close(sock);
-            return -1;
-        }
-
-        INFO("Peer info: %s:%d, extra info: %s",
-             peer_ip, peer_port,
-             (parsed == 3) ? peer_info : "(none)");
-
-        HandshakeInfo info = {0};
-        char* token = strtok(peer_info, " ");
-        while (token) {
-            if (strncmp(token, "BUF=", 4) == 0) {
-                info.buf = strtoul(token + 4, NULL, 10);
-            } else if (strncmp(token, "PROTO=", 6) == 0) {
-                info.proto = strtoul(token + 6, NULL, 10);
-            } else if (strncmp(token, "ID=", 3) == 0) {
-                info.id = strdup(token + 3);
-            }
-            token = strtok(NULL, " ");
-        }
-
-        metrics.id = info.id;
-
-        struct sockaddr_in peer_addr = {0};
-        peer_addr.sin_family = AF_INET;
-        peer_addr.sin_port = htons(peer_port);
-        if (inet_pton(AF_INET, peer_ip, &peer_addr.sin_addr) <= 0) {
-            ERRO("Invalid peer IP: %s", peer_ip);
-            close(sock);
-            return -1;
-        }
-
-        pipe->sock_fd = sock;
-        pipe->peer_addr = peer_addr;
-
-        INFO("Handshake completed — connected to peer %s:%d", peer_ip, peer_port);
-        return sock;
-    }
-
-    ERRO("Unknown handshake response: %s", buf);
-    close(sock);
-    return -1;
+    
+    INFO("Retransmission thread stopped.");
 }
 
 bool threads_init(void)
@@ -267,7 +212,8 @@ bool pipe_write_packet_sync(Pipe* pipe, const Packet* packet, struct sockaddr_in
     ssize_t sent = sendto(pipe->sock_fd, buf, len, 0, (struct sockaddr*)&to, sizeof(to));
     
     const char *type = (packet->signals & SIGNAL_END) ? "END" : 
-                       ((packet->signals & SIGNAL_ACK) ? "ACK" : "DATA");
+                       (packet->signals & SIGNAL_ACK) ? "ACK" : 
+                       (packet->signals & SIGNAL_HANDSHAKE) ? "HANDSHAKE" : "DATA";
 
     if (sent != (ssize_t)len) {
         WARN("Failed to send %s packet #%u (%zu bytes). Error: %s", 
@@ -369,49 +315,55 @@ void pipe_free(Pipe* pipe)
     threads_shutdown();
 }
 
-void ack_listener(void* arg)
+static void process_ack(Pipe* pipe, const Packet* packet)
 {
-    Pipe* pipe = arg;
-    uint8_t buf[sizeof(Packet)];
-    struct sockaddr_in src;
-    socklen_t addrlen = sizeof(src);
-
-    while (pipe->running) {
-        Packet ack;
-        ssize_t r = recvfrom(pipe->sock_fd, buf, sizeof(buf), 0,
-                             (struct sockaddr*)&src, &addrlen);
-        if (r <= 0) continue;
-
-        if (!packet_deserialize(&ack, buf, (size_t)r)) {
-            ERRO("Failed to deserialize incoming packet (Size: %zd).", r);
-            continue;
-        }
-
-        if (ack.signals & SIGNAL_ACK) {
-            pthread_mutex_lock(&pipe->ack_lock);
-            if (buffer_remove(&pipe->buffer, ack.seq)) {
-                pthread_cond_signal(&pipe->ack_cond);
-                pthread_cond_broadcast(&pipe->ack_cond);
-                INFO("Successfully processed ACK #%u. Signaling waiting sender.", ack.seq);
-            } else {
-                WARN("Received duplicate/stale ACK #%u. Not found in sender buffer.", ack.seq);
-            }
-            pthread_mutex_unlock(&pipe->ack_lock);
-        }
+    pthread_mutex_lock(&pipe->ack_lock);
+    if (buffer_remove(&pipe->buffer, packet->seq)) {
+        pthread_cond_signal(&pipe->ack_cond);
+        pthread_cond_broadcast(&pipe->ack_cond);
+        INFO("Successfully processed ACK #%u. Signaling waiting sender.", packet->seq);
+    } else {
+        WARN("Received duplicate/stale ACK #%u. Not found in sender buffer.", packet->seq);
     }
+    pthread_mutex_unlock(&pipe->ack_lock);
+}
+
+static void process_handshake(Pipe* pipe, const Packet* packet)
+{
+    INFO("Received HANDSHAKE signal");
+
+    if(!(packet->signals & SIGNAL_PAYLOAD)) {
+        WARN("Payload signal is not set");
+        if(packet->len == 0) return;
+    }
+
+    Handshake handshake = {0};
+    if(!handshake_deserialize(&handshake, packet->data, packet->len)) {
+        ERRO("Failed to deserialize handshake");
+        return;
+    }
+    handshake_print(&handshake);
+
+    pipe->payload_len = handshake.payload_len;
+    pipe->hash = handshake.hash;
+    pipe->handshake_completed = true;
+
+    INFO("Handshake completed");
 }
 
 void packet_listener(void* arg)
 {
     Pipe* pipe = arg;
-    if (!pipe || pipe->mode != MODE_RCV || pipe->sock_fd < 0)
-        return;
+    if (!pipe) return;
+
+    INFO("Packet listener thread started.");
 
     struct sockaddr_in src_addr;
     socklen_t addrlen = sizeof(src_addr);
     uint8_t buf[PACKET_BUFFER_SIZE + 9]; // header + data
 
     while (pipe->running) { 
+        if(pipe->sock_fd <= 0) continue;
         ssize_t bytes = recvfrom(pipe->sock_fd, buf, sizeof(buf), 0,
                                  (struct sockaddr*)&src_addr, &addrlen);
 
@@ -442,9 +394,21 @@ void packet_listener(void* arg)
             INFO("Received END signal");
             free(pkt_copy);
             pipe->end_received = true;
-            return; 
+            continue;
+        }         
+
+        if (pkt_copy->signals & SIGNAL_HANDSHAKE) {
+            process_handshake(pipe, pkt_copy);
+            free(pkt_copy);
+            continue;
         }
-        
+
+        if (pkt_copy->signals & SIGNAL_ACK) {
+            process_ack(pipe, pkt_copy);
+            free(pkt_copy);
+            continue;
+        }
+
         RecvJob *job = malloc(sizeof(*job));
         if (!job) { 
             ERRO("Memory allocation failed for RecvJob.");
@@ -460,6 +424,7 @@ void packet_listener(void* arg)
         if (!ordered_executor_submit(oe, key, recv_job_fn, job)) {
             WARN("Failed to submit RecvJob for packet #%u to OE. Running inline.", (unsigned)pkt_copy->seq);
             recv_job_fn(job);
+            continue;
         }
 
         INFO("Queued data packet #%u (%u bytes) from %s:%d.",
@@ -468,4 +433,26 @@ void packet_listener(void* arg)
              inet_ntoa(src_addr.sin_addr),
              ntohs(src_addr.sin_port));
     }
+
+    INFO("Packet listener thread stopped.");
+}
+
+uint64_t compute_fnv1a_hash(const void* payload, size_t len)
+{
+    if (payload == NULL || len == 0) {
+        return 0;
+    }
+
+    const uint64_t FNV_PRIME = 1099511628211ULL;
+    const uint64_t FNV_OFFSET_BASIS = 14695981039346656037ULL;
+    
+    uint64_t hash = FNV_OFFSET_BASIS;
+    const uint8_t* data = (const uint8_t*)payload;
+    
+    for (size_t i = 0; i < len; ++i) {
+        hash ^= data[i];
+        hash *= FNV_PRIME;
+    }
+    
+    return hash;
 }

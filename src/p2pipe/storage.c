@@ -172,7 +172,8 @@ void storage_append(Storage* storage, const Packet* packet)
     storage->packets[pos] = copy;
     storage->count++;
 
-    storage_try_deliver(storage);
+    if(storage->stream_data)
+        storage_try_deliver(storage);
 }
 
 /**
