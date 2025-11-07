@@ -4,12 +4,12 @@ from collections import defaultdict
 from statistics import mean
 
 
-def ns_to_ms(ns):
-    return ns / 1_000_000.0
+def us_to_ms(us):
+    return us / 1_000.0
 
 
-def ns_to_s(ns):
-    return ns / 1_000_000_000.0
+def us_to_s(us):
+    return us / 1_000_000.0
 
 
 def analyze_metrics(filename):
@@ -39,8 +39,10 @@ def analyze_metrics(filename):
         if not snd or not rcv:
             continue
 
-        duration_ns = snd["end"] - snd["start"]
-        duration_s = ns_to_s(duration_ns)
+        duration_us = snd["end"] - snd["start"]
+        duration_s = us_to_s(duration_us)
+        duration_ms = us_to_ms(duration_us)
+
         throughput = snd["payload_len"] / duration_s if duration_s > 0 else 0
 
         packet_loss = snd["packets_lost"] + rcv["packets_lost"]
@@ -53,7 +55,7 @@ def analyze_metrics(filename):
 
         summary.append({
             "id": id_,
-            "duration_ms": ns_to_ms(duration_ns),
+            "duration_ms": duration_ms,
             "throughput_Bps": throughput,
             "packet_loss_%": loss_rate,
             "ack_loss_%": ack_loss_rate,

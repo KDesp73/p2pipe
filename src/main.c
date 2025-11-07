@@ -57,6 +57,7 @@ bool listen_handler(Context context)
     pipe.storage.stream_data = true;
 
     INFO("Listening for packets...");
+    metrics_start(&metrics);
 
     if (!pipe_read(&pipe, PACKET_BUFFER_SIZE * pipe.buffer.capacity)) {
         ERRO("Could not read packets");
@@ -126,6 +127,7 @@ bool talk_handler(Context context)
         pipe_snd_close(&pipe);
         return false;
     }
+    metrics_start(&metrics);
 
     bool ok;
     size_t size = file_size(context.src);
@@ -162,7 +164,6 @@ int main(int argc, char** argv)
     signal(SIGINT, sigint_handler);
 
     metrics_init(&metrics, METRICS_FILE);
-    metrics_start(&metrics);
 
     cli_args_t args = cli_args_make(
         cli_arg_new(ARG_HELP, "help", "", no_argument),
