@@ -25,15 +25,14 @@ int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity, TPTa
 {
     if (!pipe || !ip) return -1;
 
+    pipe->onread = onread;
     pipe_init(pipe, capacity);
     pipe->mode = MODE_RCV;
     metrics.type = pipe->mode;
 
     pipe->running = true;
-    pipe->onread = onread;
 
     TIMES(3) thread_pool_submit(tp, packet_listener, pipe);
-
 
     Handshake handshake = {
         .buffer_cap = capacity,
@@ -96,11 +95,11 @@ void pipe_rcv_close(Pipe* pipe)
 
 int pipe_snd_open(Pipe* pipe, const char* ip, size_t port, size_t capacity, TPTaskFn onwrite)
 {
+    pipe->onwrite = onwrite;
     pipe_init(pipe, capacity);
     pipe->mode = MODE_SND;
     metrics.type = pipe->mode;
     pipe->running = true;
-    pipe->onwrite = onwrite;
 
     TIMES(3) thread_pool_submit(tp, packet_listener, pipe);
 

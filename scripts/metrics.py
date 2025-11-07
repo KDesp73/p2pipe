@@ -3,11 +3,14 @@ import csv
 from collections import defaultdict
 from statistics import mean
 
+
 def ns_to_ms(ns):
     return ns / 1_000_000.0
 
+
 def ns_to_s(ns):
     return ns / 1_000_000_000.0
+
 
 def analyze_metrics(filename):
     results = defaultdict(lambda: {"SND": None, "RCV": None})
@@ -83,6 +86,6 @@ def analyze_metrics(filename):
         print(f"Average ACK Loss: {avg_ack_loss:.2f}%")
         print(f"Average Threads Used: {avg_threads:.1f}")
 
+
 if __name__ == "__main__":
     analyze_metrics("metrics.csv")
-
