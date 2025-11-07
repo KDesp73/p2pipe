@@ -28,7 +28,7 @@ int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity, TPTa
     pipe->onread = onread;
     pipe_init(pipe, capacity);
     pipe->mode = MODE_RCV;
-    metrics.type = pipe->mode;
+    METRICS_SET(type, pipe->mode);
 
     pipe->running = true;
 
@@ -98,7 +98,7 @@ int pipe_snd_open(Pipe* pipe, const char* ip, size_t port, size_t capacity, TPTa
     pipe->onwrite = onwrite;
     pipe_init(pipe, capacity);
     pipe->mode = MODE_SND;
-    metrics.type = pipe->mode;
+    METRICS_SET(type, pipe->mode);
     pipe->running = true;
 
     TIMES(3) thread_pool_submit(tp, packet_listener, pipe);
@@ -246,7 +246,7 @@ void pipe_snd_close(Pipe *pipe)
     
     if (pipe->buffer.count > 0) {
         WARN("There are %zu packets that have not been acknowledged and may be lost.", pipe->buffer.count);
-        metrics.acks_lost += pipe->buffer.count;
+        METRICS_ADD(acks_lost, pipe->buffer.count);
     }
     
     pipe_free(pipe);

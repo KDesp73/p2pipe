@@ -67,7 +67,7 @@ bool storage_init(Storage* storage, size_t capacity, const char* dest_path, uint
 
     storage->count = 0;
     storage->capacity = capacity;
-    storage->next_expected_seq = initial_seq; // Initialize expected sequence
+    storage->next_expected_seq = initial_seq;
     storage->ready = true;
     return true;
 }
@@ -165,7 +165,7 @@ void storage_append(Storage* storage, const Packet* packet)
     storage->packets[pos] = copy;
     storage->count++;
 
-    metrics.payload_len += packet->len;
+    METRICS_ADD(payload_len, packet->len);
 
     if(storage->stream_data)
         storage_try_deliver(storage);

@@ -45,7 +45,7 @@ bool listen_handler(Context context)
     }
 
     size_t capacity = context.capacity ? context.capacity : DEFAULT_CAPACITY;
-    metrics.buffer_capacity = capacity;
+    METRICS_SET(buffer_capacity, capacity);
 
     Pipe pipe = {0};
     int sock = pipe_rcv_open(&pipe, context.ip, context.port, capacity, NULL);
@@ -119,7 +119,7 @@ bool talk_handler(Context context)
     }
 
     size_t capacity = context.capacity ? context.capacity : DEFAULT_CAPACITY;
-    metrics.buffer_capacity = capacity;
+    METRICS_SET(buffer_capacity, capacity);
 
     Pipe pipe = {0};
     int sock = pipe_snd_open(&pipe, context.ip, context.port, capacity, NULL);
@@ -131,7 +131,7 @@ bool talk_handler(Context context)
 
     bool ok;
     size_t size = file_size(context.src);
-    metrics.payload_len = size;
+    METRICS_SET(payload_len, size);
     if (size > LARGE_FILE_THRESHOLD) {
         ok = stream_file(context.src, &pipe);
     } else {

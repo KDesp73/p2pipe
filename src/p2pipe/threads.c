@@ -4,7 +4,6 @@
 #include <string.h>
 #include "p2pipe/threads.h"
 #include "extern/logging.h"
-#include "p2pipe/metrics.h"
 
 static void *worker_main(void *vpool)
 {

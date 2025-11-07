@@ -33,7 +33,6 @@ typedef struct {
     size_t acks_sent;
     size_t acks_received;
     size_t acks_lost;       
-    size_t threads_used;    
     uint64_t start;         
     uint64_t end;           
 
@@ -48,6 +47,17 @@ void metrics_start(Metrics* metrics);
 void metrics_end(Metrics* metrics); 
 void metrics_free(Metrics* metrics); 
 void metrics_print(const Metrics* metrics); 
+
+#ifndef METRICS_ENABLED
+    #define METRICS_INCR(field)
+    #define METRICS_ADD(field, num)
+    #define METRICS_SET(field, value)
+#else
+    #define METRICS_INCR(field) metrics.field++
+    #define METRICS_ADD(field, num) metrics.field += num
+    #define METRICS_SET(field, value) metrics.field = value
+#endif // METRICS_ENABLED
+
 
 extern Metrics metrics;
 

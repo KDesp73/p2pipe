@@ -255,12 +255,14 @@ int pipe_handshake(Pipe* pipe, const char* ip, size_t port, const Handshake* han
                 free(info.version);
             } else if (strncmp(token, "ID=", 3) == 0) {
                 info.id = strdup(token + 3);
-                metrics.id = info.id;
+                METRICS_SET(id, info.id);
             }
             token = strtok(NULL, " ");
         }
 
-
+#ifndef METRICS_ENABLED
+        free(info.id);
+#endif
         struct sockaddr_in peer_addr = {0};
         peer_addr.sin_family = AF_INET;
         peer_addr.sin_port = htons(peer_port);

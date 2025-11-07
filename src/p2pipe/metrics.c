@@ -1,5 +1,6 @@
 #include "p2pipe/metrics.h"
 #include "extern/logging.h"
+#include "p2pipe/helpers.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,6 +10,10 @@
 
 bool metrics_init(Metrics* metrics, const char* path)
 {
+#ifndef METRICS_ENABLED
+    return false;
+#endif
+
     if (access(path, F_OK) == 0)
         return true; // File exists
 
@@ -31,13 +36,22 @@ bool metrics_init(Metrics* metrics, const char* path)
     metrics->packets_received = 0;
     metrics->packets_lost = 0;
     metrics->acks_lost = 0;
-    metrics->threads_used = 1;
+    metrics->acks_sent = 0;
+    metrics->acks_received = 0;
+    metrics->start = 0;         
+    metrics->end = 0;           
+    metrics->buffer_capacity = 0;
+    metrics->payload_len = 0;
+    metrics->type = -1;
 
     return true;
 }
 
 bool metrics_write(const Metrics* metrics, const char* path)
 {
+#ifndef METRICS_ENABLED
+    return false;
+#endif
     FILE* fd = fopen(path, "a");
     if (!fd) {
         ERRO("Could not open file `%s` for writing", path);
@@ -58,24 +72,27 @@ bool metrics_write(const Metrics* metrics, const char* path)
     return true;
 }
 
-static uint64_t get_current_time_us() {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (uint64_t)tv.tv_sec * 1000000 + tv.tv_usec;
-}
-
 void metrics_start(Metrics* metrics)
 {
-    metrics->start = get_current_time_us();
+#ifndef METRICS_ENABLED
+    return;
+#endif
+    metrics->start = current_time_us();
 }
 
 void metrics_end(Metrics* metrics)
 {
-    metrics->end = get_current_time_us();
+#ifndef METRICS_ENABLED
+    return;
+#endif
+    metrics->end = current_time_us();
 }
 
 void metrics_free(Metrics* metrics)
 {
+#ifndef METRICS_ENABLED
+    return;
+#endif
     if(!metrics) return;
     if(metrics->id){
         free(metrics->id);
@@ -85,6 +102,9 @@ void metrics_free(Metrics* metrics)
 
 void metrics_print(const Metrics* metrics)
 {
+#ifndef METRICS_ENABLED
+    return;
+#endif
     uint64_t duration_us = metrics->end > metrics->start ? metrics->end - metrics->start : 0;
     double duration_ms = (double)duration_us / 1000.0;
 
@@ -95,7 +115,6 @@ void metrics_print(const Metrics* metrics)
     printf("- Start Time (us): %lu\n", (unsigned long)metrics->start);
     printf("- End Time (us) | %lu\n", (unsigned long)metrics->end);
     printf("- **Duration (ms)**:  **%.3f ms**\n", duration_ms);
-    printf("- Threads Used: %zu\n", metrics->threads_used);
     
     printf("\n### Packet Statistics\n");
     printf("- Packets Sent: %zu\n", metrics->packets_sent);

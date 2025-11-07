@@ -23,6 +23,13 @@ long long current_time_ms()
     return te.tv_sec*1000LL + te.tv_usec/1000;
 }
 
+uint64_t current_time_us()
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (uint64_t)tv.tv_sec * 1000000 + tv.tv_usec;
+}
+
 void retransmission_thread(void* arg)
 {
     Pipe* pipe = (Pipe*)arg;
@@ -51,7 +58,7 @@ void retransmission_thread(void* arg)
             }
             
             if(retransmitted_count > 0) {
-                WARN("Retransmitted %zu packets.", retransmitted_count);
+                INFO("Retransmitted %zu packets.", retransmitted_count);
             }
         }
 
@@ -103,7 +110,8 @@ void send_job_fn(void *arg)
         WARN("Failed to send %s #%u (%zu bytes). Error: %s",
              type, job->packet.seq, len, strerror(errno));
     } else {
-        (job->packet.signals & SIGNAL_ACK) ? metrics.acks_sent++ : metrics.packets_sent++;
+        if(job->packet.signals & SIGNAL_ACK) METRICS_INCR(acks_sent); 
+        else  METRICS_INCR(packets_sent);
         INFO("%s packet #%u (%zu bytes) sent successfully to peer.",
              type, job->packet.seq, sent);
     }
@@ -202,7 +210,7 @@ bool pipe_write_packet_sync(Pipe* pipe, const Packet* packet, struct sockaddr_in
              type, packet->seq, len, strerror(errno));
         return false;
     }
-    metrics.packets_sent++;
+    METRICS_INCR(packets_sent);
     INFO("%s packet #%u (%zu bytes) sent successfully.", 
          type, packet->seq, len);
     return true;
@@ -245,6 +253,8 @@ void pipe_init(Pipe* pipe, size_t capacity)
     pipe->storage.count = 0;
     pipe->storage.ready = false;
     pipe->seq = 0;
+    pipe->hash = 0;
+    pipe->payload_len = 0;
 
     if(!buffer_init(&pipe->buffer, capacity)){
         ERRO("Could not initialize buffer");
@@ -380,13 +390,13 @@ void packet_listener(void* arg)
         }
 
         if (pkt_copy->signals & SIGNAL_ACK) {
-            metrics.acks_received++;
+            METRICS_INCR(acks_received);
             process_ack(pipe, pkt_copy);
             free(pkt_copy);
             continue;
         }
 
-        metrics.packets_received++;
+        METRICS_INCR(packets_received);
 
         if (pkt_copy->signals & SIGNAL_END) {
             INFO("Received END signal");

@@ -50,4 +50,11 @@ bool pipe_write(Pipe* pipe, void* payload, size_t len);
 bool pipe_flush(Pipe* pipe);
 void pipe_snd_close(Pipe* pipe);
 
+void pipe_init(Pipe* pipe, size_t capacity);
+void pipe_free(Pipe* pipe);
+
+bool pipe_write_packet_sync(Pipe* pipe, const Packet* packet, struct sockaddr_in *dest);
+bool pipe_write_packet_async(Pipe* pipe, const Packet* packet, struct sockaddr_in *dest);
+
+
 #endif // PIPE_H

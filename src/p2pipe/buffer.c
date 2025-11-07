@@ -12,14 +12,13 @@
 bool buffer_init(Buffer* buffer, size_t capacity) {
     if (!buffer) return false;
     
+    buffer->count = 0;
     buffer->items = (Packet*)calloc(capacity, sizeof(Packet));
     if (!buffer->items) {
-        buffer->count = 0;
         buffer->capacity = 0;
         return false;
     }
     
-    buffer->count = 0;
     buffer->capacity = capacity;
     return true;
 }

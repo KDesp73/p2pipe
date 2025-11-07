@@ -4,20 +4,15 @@
 #include "p2pipe/pipe.h"
 #include <stdbool.h>
 
-void pipe_init(Pipe* pipe, size_t capacity);
-void pipe_free(Pipe* pipe);
-
-bool pipe_write_packet_sync(Pipe* pipe, const Packet* packet, struct sockaddr_in *dest);
-bool pipe_write_packet_async(Pipe* pipe, const Packet* packet, struct sockaddr_in *dest);
-
-void packet_listener(void* arg);
-void retransmission_thread(void* arg);
 
 long long current_time_ms();
+uint64_t current_time_us();
 
 bool threads_init(void);
 void threads_shutdown(void);
 
+void packet_listener(void* arg);
+void retransmission_thread(void* arg);
 void send_job_fn(void *arg);
 void recv_job_fn(void *arg);
 

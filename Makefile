@@ -21,12 +21,14 @@ VERSION_MINOR = $(shell sed -n -e 's/\#define VERSION_MINOR \([0-9]*\)/\1/p' $(v
 VERSION_PATCH = $(shell sed -n -e 's/\#define VERSION_PATCH \([0-9]*\)/\1/p' $(version_file))
 VERSION = $(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)
 
+DEFINES = -DMETRICS_ENABLED -DDEBUG
+
 # Determine the build type
 ifeq ($(type), RELEASE)
 	CFLAGS += -O3
 else
 	SANITIZERS = -fsanitize=address,undefined
-	CFLAGS  += -DDEBUG -ggdb -fno-omit-frame-pointer -fno-optimize-sibling-calls
+	CFLAGS  += $(DEFINES) -ggdb -fno-omit-frame-pointer -fno-optimize-sibling-calls
 	CFLAGS  += -Wall -Wextra -Wno-unused-parameter -Wno-unused-function
 	CFLAGS  += $(SANITIZERS)
 	LDFLAGS += $(SANITIZERS)
@@ -69,7 +71,7 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c ## Compile source files with progress
 
 $(TARGET): $(BUILD_DIR) static ## Build executable using static library
 	@echo "[INFO] Building executable: $(TARGET)"
-	@$(CC) $(SRC_FILES) -o $(TARGET) -L. -l:$(A_NAME) $(LDFLAGS) -Iinclude
+	@$(CC) $(SRC_FILES) -o $(TARGET) -L. -l:$(A_NAME) $(LDFLAGS) -Iinclude $(DEFINES)
 
 .PHONY: shared
 shared: $(BUILD_DIR) $(OBJ_LIB_FILES) ## Build shared library
