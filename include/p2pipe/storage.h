@@ -19,6 +19,6 @@ bool storage_init(Storage* storage, size_t capacity, const char* dest_path, uint
 void storage_free(Storage* storage);
 void storage_append(Storage* storage, const Packet* packet);
 void storage_resize(Storage* storage, size_t capacity);
-void storage_export(const Storage* storage, const char* path);
+void storage_export(const Storage* storage);
 
 #endif // STORAGE_H

@@ -16,11 +16,13 @@
 #include <sys/select.h>
 #include <netdb.h>
 
+#define HANDSHAKE_LEN (sizeof(uint32_t))
+
 size_t handshake_serialize(const Handshake* handshake, uint8_t* buffer, size_t len)
 {
     if (!handshake|| !buffer) return 0;
 
-    size_t total_size = sizeof(uint32_t) * 2 + sizeof(uint64_t);
+    size_t total_size = HANDSHAKE_LEN;
     if (total_size > len) {
         return 0;
     }
@@ -30,18 +32,12 @@ size_t handshake_serialize(const Handshake* handshake, uint8_t* buffer, size_t l
     memcpy(buffer + offset, &handshake->buffer_cap, sizeof(handshake->buffer_cap));
     offset += sizeof(handshake->buffer_cap);
 
-    memcpy(buffer + offset, &handshake->payload_len, sizeof(handshake->payload_len));
-    offset += sizeof(handshake->payload_len);
-
-    memcpy(buffer + offset, &handshake->hash, sizeof(handshake->hash));
-    offset += sizeof(handshake->hash);
-
     return offset;
 }
 
 bool handshake_deserialize(Handshake* handshake, const uint8_t* buffer, size_t len)
 {
-    if (!handshake || !buffer || len < sizeof(uint32_t) * 2 + sizeof(uint64_t)) {
+    if (!handshake || !buffer || len != HANDSHAKE_LEN) {
         return false;
     }
 
@@ -49,12 +45,6 @@ bool handshake_deserialize(Handshake* handshake, const uint8_t* buffer, size_t l
 
     memcpy(&handshake->buffer_cap, buffer + offset, sizeof(uint32_t));
     offset += sizeof(uint32_t);
-
-    memcpy(&handshake->payload_len, buffer + offset, sizeof(uint32_t));
-    offset += sizeof(uint32_t);
-
-    memcpy(&handshake->hash, buffer + offset, sizeof(uint64_t));
-    offset += sizeof(uint64_t);
 
     return true;
 }
@@ -303,5 +293,5 @@ int pipe_handshake(Pipe* pipe, const char* ip, size_t port, const Handshake* han
 
 void handshake_print(const Handshake* handshake)
 {
-    printf("[HANDSHAKE PAYLOAD] buffer: %u, payload: %u, hash %lu\n", handshake->buffer_cap, handshake->payload_len, handshake->hash);
+    printf("[HANDSHAKE PAYLOAD] buffer: %u\n", handshake->buffer_cap);
 }

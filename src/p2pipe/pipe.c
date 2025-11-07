@@ -2,6 +2,7 @@
 #include "extern/logging.h"
 #include "p2pipe/buffer.h"
 #include "p2pipe/handshake.h"
+#include "p2pipe/metrics.h"
 #include "p2pipe/packet.h"
 #include "p2pipe/storage.h"
 #include "p2pipe/helpers.h"
@@ -16,24 +17,26 @@
 #include <string.h>
 #include <unistd.h>
 
-#define TIMES(n) for(size_t i = 0; i < 1; i++)
+#define TIMES(n) for(size_t i = 0; i < (n); i++)
 
 ThreadPool* tp = NULL;
 
-int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity)
+int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity, TPTaskFn onread)
 {
     if (!pipe || !ip) return -1;
 
     pipe_init(pipe, capacity);
     pipe->mode = MODE_RCV;
+    metrics.type = pipe->mode;
+
     pipe->running = true;
+    pipe->onread = onread;
 
     TIMES(3) thread_pool_submit(tp, packet_listener, pipe);
 
+
     Handshake handshake = {
         .buffer_cap = capacity,
-        .payload_len = 0,
-        .hash = 0
     };
     int sock = pipe_handshake(pipe, ip, port, &handshake);
     if (sock < 0) {
@@ -91,18 +94,18 @@ void pipe_rcv_close(Pipe* pipe)
     INFO("Pipe receiver closed");
 }
 
-int pipe_snd_open(Pipe* pipe, const char* ip, size_t port, size_t capacity, void* payload, size_t len)
+int pipe_snd_open(Pipe* pipe, const char* ip, size_t port, size_t capacity, TPTaskFn onwrite)
 {
     pipe_init(pipe, capacity);
     pipe->mode = MODE_SND;
+    metrics.type = pipe->mode;
     pipe->running = true;
+    pipe->onwrite = onwrite;
 
     TIMES(3) thread_pool_submit(tp, packet_listener, pipe);
 
     Handshake handshake = {
-        .buffer_cap = capacity,
-        .payload_len = len,
-        .hash = compute_fnv1a_hash(payload, len)
+        .buffer_cap = capacity
     };
     int sock = pipe_handshake(pipe, ip, port, &handshake);
     if (sock < 0) {
@@ -244,6 +247,7 @@ void pipe_snd_close(Pipe *pipe)
     
     if (pipe->buffer.count > 0) {
         WARN("There are %zu packets that have not been acknowledged and may be lost.", pipe->buffer.count);
+        metrics.acks_lost += pipe->buffer.count;
     }
     
     pipe_free(pipe);

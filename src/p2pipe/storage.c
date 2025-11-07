@@ -1,5 +1,6 @@
 #include "p2pipe/storage.h"
 #include "extern/logging.h"
+#include "p2pipe/metrics.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,32 +15,25 @@
  */
 static void storage_try_deliver(Storage* storage)
 {
-    // Write and remove packets as long as the next expected packet is at the head of the array
     while (storage->count > 0 && storage->packets[0]->seq == storage->next_expected_seq) {
         Packet* pkt = storage->packets[0];
 
-        // 1. Write the packet data to the file
         if (storage->file_out && pkt->len > 0) {
             size_t written = fwrite(pkt->data, 1, pkt->len, storage->file_out);
             if (written != pkt->len) {
                 ERRO("Partial write to file during delivery of seq #%u. Aborting delivery.", pkt->seq);
-                // Stop delivery on a write failure
                 break; 
             }
         }
         
-        // 2. Advance the expected sequence number
         storage->next_expected_seq++; 
 
-        // 3. Remove the packet from storage and free its memory
         free(pkt);
 
-        // Shift remaining packets up to fill the gap (O(N) operation)
         if (storage->count > 1) {
             memmove(&storage->packets[0], &storage->packets[1], (storage->count - 1) * sizeof(Packet*));
         }
         
-        // Decrement count and clear the now-empty last pointer
         storage->count--;
         if (storage->count < storage->capacity) {
             storage->packets[storage->count] = NULL;
@@ -137,7 +131,6 @@ void storage_append(Storage* storage, const Packet* packet)
     if (storage->count >= storage->capacity)
         storage_resize(storage, storage->capacity * 2);
 
-    // 1. Check for duplicate or already delivered packet (delivery is prioritized by seq)
     if (packet->seq < storage->next_expected_seq) {
         INFO("Dropping duplicate/already delivered packet #%u", packet->seq);
         return;
@@ -146,7 +139,7 @@ void storage_append(Storage* storage, const Packet* packet)
     for (size_t i = 0; i < storage->count; ++i) {
         if (storage->packets[i] && storage->packets[i]->seq == packet->seq) {
             INFO("Dropping duplicate packet #%u found in storage", packet->seq);
-            return; // duplicate packet in buffer
+            return;
         }
     }
 
@@ -172,6 +165,8 @@ void storage_append(Storage* storage, const Packet* packet)
     storage->packets[pos] = copy;
     storage->count++;
 
+    metrics.payload_len += packet->len;
+
     if(storage->stream_data)
         storage_try_deliver(storage);
 }
@@ -181,9 +176,8 @@ void storage_append(Storage* storage, const Packet* packet)
  * NOTE: This function is mostly obsolete in the new design where data is streamed
  * but is kept to write any out-of-order data remaining on shutdown/export request.
  * * @param storage Pointer to the Storage structure.
- * @param path The path to the file (unused, as file is already open).
  */
-void storage_export(const Storage* storage, const char* path)
+void storage_export(const Storage* storage)
 {
     if (!storage || !storage->file_out)
         return;

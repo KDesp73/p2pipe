@@ -1,11 +1,13 @@
 #include "futils.h"
 #include "help.h"
 #include "futils.h"
+#include "p2pipe/helpers.h"
 #include "p2pipe/metrics.h"
 #include "p2pipe/storage.h"
 #include "validation.h"
 #include "p2pipe/bootstrap.h"
 #include <bits/getopt_core.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,14 +44,16 @@ bool listen_handler(Context context)
         return false;
     }
 
+    size_t capacity = context.capacity ? context.capacity : DEFAULT_CAPACITY;
+    metrics.buffer_capacity = capacity;
+
     Pipe pipe = {0};
-    int sock = pipe_rcv_open(&pipe, context.ip, context.port,
-                             context.capacity ? context.capacity : DEFAULT_CAPACITY);
+    int sock = pipe_rcv_open(&pipe, context.ip, context.port, capacity, NULL);
     if (sock <= 0) {
         return false;
     }
 
-    storage_init(&pipe.storage, context.capacity ? context.capacity : DEFAULT_CAPACITY, context.dst, pipe.seq); 
+    storage_init(&pipe.storage, capacity, context.dst, pipe.seq); 
     pipe.storage.stream_data = true;
 
     INFO("Listening for packets...");
@@ -113,19 +117,20 @@ bool talk_handler(Context context)
         return false;
     }
 
+    size_t capacity = context.capacity ? context.capacity : DEFAULT_CAPACITY;
+    metrics.buffer_capacity = capacity;
+
     Pipe pipe = {0};
-    int sock = pipe_snd_open(
-            &pipe, context.ip, context.port,
-            context.capacity ? context.capacity : DEFAULT_CAPACITY,
-            NULL, 0 // no preloaded data
-            );
+    int sock = pipe_snd_open(&pipe, context.ip, context.port, capacity, NULL);
     if (sock <= 0) {
         pipe_snd_close(&pipe);
         return false;
     }
 
     bool ok;
-    if (file_size(context.src) > LARGE_FILE_THRESHOLD) {
+    size_t size = file_size(context.src);
+    metrics.payload_len = size;
+    if (size > LARGE_FILE_THRESHOLD) {
         ok = stream_file(context.src, &pipe);
     } else {
         void* buffer = NULL;
@@ -143,10 +148,19 @@ bool talk_handler(Context context)
     return ok;
 }
 
+void sigint_handler(int sig)
+{
+    metrics_end(&metrics);
+    metrics_write(&metrics, METRICS_FILE);
+    metrics_free(&metrics);
+    exit(0);
+}
 
 Metrics metrics;
 int main(int argc, char** argv)
 {
+    signal(SIGINT, sigint_handler);
+
     metrics_init(&metrics, METRICS_FILE);
     metrics_start(&metrics);
 

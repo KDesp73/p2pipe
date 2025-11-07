@@ -4,6 +4,7 @@
 #include "p2pipe/buffer.h"
 #include "p2pipe/packet.h"
 #include "p2pipe/storage.h"
+#include "p2pipe/threads.h"
 #include <netinet/in.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -35,13 +36,16 @@ typedef struct {
     pthread_cond_t ack_cond;
     pthread_mutex_t storage_lock;
     pthread_cond_t storage_cond;
+
+    TPTaskFn onread;
+    TPTaskFn onwrite;
 } Pipe;
 
-int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity);
+int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity, TPTaskFn onread);
 bool pipe_read(Pipe* pipe, size_t n_bytes);
 void pipe_rcv_close(Pipe* pipe);
 
-int pipe_snd_open(Pipe* pipe, const char* ip, size_t port, size_t capacity, void* payload, size_t len);
+int pipe_snd_open(Pipe* pipe, const char* ip, size_t port, size_t capacity, TPTaskFn onwrite);
 bool pipe_write(Pipe* pipe, void* payload, size_t len);
 bool pipe_flush(Pipe* pipe);
 void pipe_snd_close(Pipe* pipe);

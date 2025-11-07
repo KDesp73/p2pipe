@@ -4,6 +4,7 @@
 #include <string.h>
 #include "p2pipe/threads.h"
 #include "extern/logging.h"
+#include "p2pipe/metrics.h"
 
 static void *worker_main(void *vpool)
 {
@@ -87,6 +88,8 @@ bool thread_pool_submit(ThreadPool *p, TPTaskFn fn, void *arg)
     p->task_count++;
     pthread_cond_signal(&p->cond);
     pthread_mutex_unlock(&p->lock);
+
+    metrics.threads_used++;
     return true;
 }
 

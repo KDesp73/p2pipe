@@ -31,9 +31,9 @@ ThreadPool *thread_pool_create(size_t num_threads);
 bool thread_pool_submit(ThreadPool *p, TPTaskFn fn, void *arg);
 void thread_pool_wait(ThreadPool *p);
 void thread_pool_join(ThreadPool *p);
+void thread_pool_wake_all(ThreadPool *p);
 void thread_pool_shutdown(ThreadPool *p);
 void thread_pool_destroy(ThreadPool *p);
-void thread_pool_wake_all(ThreadPool *p);
 void thread_pool_free(ThreadPool *p);
 
 extern ThreadPool* tp;

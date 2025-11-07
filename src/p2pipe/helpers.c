@@ -103,7 +103,7 @@ void send_job_fn(void *arg)
         WARN("Failed to send %s #%u (%zu bytes). Error: %s",
              type, job->packet.seq, len, strerror(errno));
     } else {
-        metrics.packets_sent++;
+        (job->packet.signals & SIGNAL_ACK) ? metrics.acks_sent++ : metrics.packets_sent++;
         INFO("%s packet #%u (%zu bytes) sent successfully to peer.",
              type, job->packet.seq, sent);
     }
@@ -166,7 +166,6 @@ void recv_job_fn(void *arg)
             pthread_mutex_lock(&pipe->ack_lock);
             if (buffer_remove(&pipe->buffer, packet->seq)) {
                 pthread_cond_signal(&pipe->ack_cond); 
-                metrics.packets_acked++;
                 INFO("Successfully removed acknowledged packet #%u. Remaining: %zu.", 
                      packet->seq, pipe->buffer.count);
             } else {
@@ -227,6 +226,13 @@ bool pipe_write_packet_async(Pipe* pipe, const Packet* packet, struct sockaddr_i
     if (!thread_pool_submit(tp, send_job_fn, sj)) {
         free(sj);
         return false;
+    }
+
+    if(pipe->onwrite){
+        if (!thread_pool_submit(tp, pipe->onwrite, sj)) {
+            free(sj);
+            return false;
+        }
     }
     return true;
 }
@@ -327,8 +333,6 @@ static void process_handshake(Pipe* pipe, const Packet* packet)
     }
     handshake_print(&handshake);
 
-    pipe->payload_len = handshake.payload_len;
-    pipe->hash = handshake.hash;
     pipe->handshake_completed = true;
 
     INFO("Handshake completed");
@@ -364,8 +368,6 @@ void packet_listener(void* arg)
             continue;
         }
 
-        metrics.packets_received++;
-
         Packet *pkt_copy = malloc(sizeof(Packet)); 
         if (!pkt_copy) {
             ERRO("Memory allocation failed for packet copy.");
@@ -376,6 +378,15 @@ void packet_listener(void* arg)
             free(pkt_copy);
             continue;
         }
+
+        if (pkt_copy->signals & SIGNAL_ACK) {
+            metrics.acks_received++;
+            process_ack(pipe, pkt_copy);
+            free(pkt_copy);
+            continue;
+        }
+
+        metrics.packets_received++;
 
         if (pkt_copy->signals & SIGNAL_END) {
             INFO("Received END signal");
@@ -390,11 +401,7 @@ void packet_listener(void* arg)
             continue;
         }
 
-        if (pkt_copy->signals & SIGNAL_ACK) {
-            process_ack(pipe, pkt_copy);
-            free(pkt_copy);
-            continue;
-        }
+
 
         RecvJob *job = malloc(sizeof(*job));
         if (!job) { 
@@ -410,9 +417,17 @@ void packet_listener(void* arg)
         unsigned int pkt_len = pkt_copy->len;
         
         if (!thread_pool_submit(tp, recv_job_fn, job)) {
-            WARN("Failed to submit RecvJob for packet #%u to OE. Running inline.", seq_num);
+            WARN("Failed to submit RecvJob for packet #%u to TP. Running inline.", seq_num);
             recv_job_fn(job);
             continue;
+        }
+
+        if(pipe->onread) {
+            if(!thread_pool_submit(tp, pipe->onread, job)) {
+                WARN("Failed to submit pipe->onread for packet #%u to TP. Running inline.", seq_num);
+                pipe->onread(job);
+                continue;
+            }
         }
 
         INFO("Queued data packet #%u (%u bytes) from %s:%d.",

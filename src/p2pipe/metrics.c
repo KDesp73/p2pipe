@@ -100,7 +100,6 @@ void metrics_print(const Metrics* metrics)
     printf("\n### Packet Statistics\n");
     printf("- Packets Sent: %zu\n", metrics->packets_sent);
     printf("- Packets Received: %zu\n", metrics->packets_received);
-    printf("- Packets Acknowledged: %zu\n", metrics->packets_acked);
     printf("- **Estimated Packets Lost**: **%zu**\n", metrics->packets_lost);
     printf("- Estimated ACKs Lost: %zu\n", metrics->acks_lost);
 }
