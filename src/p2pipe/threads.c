@@ -89,7 +89,6 @@ bool thread_pool_submit(ThreadPool *p, TPTaskFn fn, void *arg)
     pthread_cond_signal(&p->cond);
     pthread_mutex_unlock(&p->lock);
 
-    metrics.threads_used++;
     return true;
 }
 

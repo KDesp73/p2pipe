@@ -24,7 +24,6 @@ def analyze_metrics(filename):
             row["acks_sent"] = int(row["acks_sent"])
             row["acks_received"] = int(row["acks_received"])
             row["acks_lost"] = int(row["acks_lost"])
-            row["threads_used"] = int(row["threads_used"])
             row["start"] = int(row["start"])
             row["end"] = int(row["end"])
             row["buffer_capacity"] = int(row["buffer_capacity"])
@@ -58,12 +57,11 @@ def analyze_metrics(filename):
             "throughput_Bps": throughput,
             "packet_loss_%": loss_rate,
             "ack_loss_%": ack_loss_rate,
-            "threads_avg": mean([snd["threads_used"], rcv["threads_used"]]),
             "payload_len": snd["payload_len"],
         })
 
     print(f"{'ID':<20} {'Duration(ms)':>12} {'Throughput(B/s)':>18} "
-          f"{'PktLoss(%)':>12} {'AckLoss(%)':>12} {'Threads':>10} {'Payload':>10}")
+          f"{'PktLoss(%)':>12} {'AckLoss(%)':>12} {'Payload':>10}")
     print("-" * 90)
     for s in summary:
         print(f"{s['id']:<20} "
@@ -71,7 +69,6 @@ def analyze_metrics(filename):
               f"{s['throughput_Bps']:>18.2f} "
               f"{s['packet_loss_%']:>12.2f} "
               f"{s['ack_loss_%']:>12.2f} "
-              f"{s['threads_avg']:>10.1f} "
               f"{s['payload_len']:>10}")
 
     # Global stats
@@ -79,12 +76,10 @@ def analyze_metrics(filename):
         avg_throughput = mean(s["throughput_Bps"] for s in summary)
         avg_loss = mean(s["packet_loss_%"] for s in summary)
         avg_ack_loss = mean(s["ack_loss_%"] for s in summary)
-        avg_threads = mean(s["threads_avg"] for s in summary)
         print("\n=== Overall Summary ===")
         print(f"Average Throughput: {avg_throughput:.2f} B/s")
         print(f"Average Packet Loss: {avg_loss:.2f}%")
         print(f"Average ACK Loss: {avg_ack_loss:.2f}%")
-        print(f"Average Threads Used: {avg_threads:.1f}")
 
 
 if __name__ == "__main__":

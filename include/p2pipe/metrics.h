@@ -7,8 +7,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define CSV_HEADER "id,packets_sent,packets_received,packets_lost,acks_sent,acks_received,acks_lost,threads_used,start,end,buffer_capacity,payload_len,type\n"
-#define METRICS_FMT "%s,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%lu,%lu,%zu,%zu,%s\n"
+#define CSV_HEADER "id,packets_sent,packets_received,packets_lost,acks_sent,acks_received,acks_lost,start,end,buffer_capacity,payload_len,type\n"
+#define METRICS_FMT "%s,%zu,%zu,%zu,%zu,%zu,%zu,%lu,%lu,%zu,%zu,%s\n"
 #define METRICS_ARGS(m) \
     (m).id, \
     (m).packets_sent, \
@@ -17,7 +17,6 @@
     (m).acks_sent, \
     (m).acks_received, \
     (m).acks_lost, \
-    (m).threads_used, \
     (unsigned long)(m).start, \
     (unsigned long)(m).end, \
     (m).buffer_capacity, \
