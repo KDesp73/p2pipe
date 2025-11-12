@@ -1,5 +1,6 @@
 #include "p2pipe/metrics.h"
 #include "extern/logging.h"
+#include "p2pipe/log.h"
 #include "p2pipe/helpers.h"
 #include <stdio.h>
 #include <stdlib.h>

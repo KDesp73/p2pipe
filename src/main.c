@@ -2,6 +2,7 @@
 #include "help.h"
 #include "futils.h"
 #include "p2pipe/helpers.h"
+#include "p2pipe/log.h"
 #include "p2pipe/metrics.h"
 #include "p2pipe/storage.h"
 #include "validation.h"
@@ -15,9 +16,13 @@
 #define CLI_IMPLEMENTATION
 #include "extern/cli.h"
 #include "extern/logging.h"
+#include "p2pipe/log.h"
 #include "p2pipe/pipe.h"
 #include "p2pipe/version.h"
 #include "cli.h"
+
+Metrics metrics;
+FILE* log_file = NULL;
 
 bool serve_handler(Context context) 
 {
@@ -162,13 +167,13 @@ void sigint_handler(int sig)
     exit(0);
 }
 
-Metrics metrics;
 int main(int argc, char** argv)
 {
 #ifdef METRICS_ENABLED
     printf("[DEBU] Metrics enabled\n");
 #endif
     signal(SIGINT, sigint_handler);
+    logging_set_file();
 
     metrics_init(&metrics, METRICS_FILE);
 

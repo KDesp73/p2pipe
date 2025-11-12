@@ -11,3 +11,4 @@ libp2pipe.*
 metrics.csv
 *.txt
 *.rcv
+logs/

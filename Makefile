@@ -21,12 +21,13 @@ VERSION_MINOR = $(shell sed -n -e 's/\#define VERSION_MINOR \([0-9]*\)/\1/p' $(v
 VERSION_PATCH = $(shell sed -n -e 's/\#define VERSION_PATCH \([0-9]*\)/\1/p' $(version_file))
 VERSION = $(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)
 
-DEFINES = -DMETRICS_ENABLED -DDEBUG
+DEFINES = 
 
 # Determine the build type
 ifeq ($(type), RELEASE)
 	CFLAGS += -O3
 else
+	DEFINES += -DMETRICS_ENABLED -DDEBUG
 	SANITIZERS = -fsanitize=address,undefined
 	CFLAGS  += $(DEFINES) -ggdb -fno-omit-frame-pointer -fno-optimize-sibling-calls
 	CFLAGS  += -Wall -Wextra -Wno-unused-parameter -Wno-unused-function

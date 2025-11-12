@@ -3,6 +3,7 @@
 #include "p2pipe/id.h"
 #include "p2pipe/metrics.h"
 #include "extern/logging.h"
+#include "p2pipe/log.h"
 #include "p2pipe/packet.h"
 #include "p2pipe/pipe.h"
 #include "p2pipe/version.h"
@@ -213,7 +214,7 @@ int pipe_handshake(Pipe* pipe, const char* ip, size_t port, const char* id, cons
 
         if (assigned_id[0] != '\0') {
             METRICS_SET(id, strdup(assigned_id));
-            INFO("Server assigned session ID=%s; waiting for peer...", assigned_id);
+            printf("Server assigned session ID=%s; waiting for peer...\n", assigned_id);
         } else {
             ERRO("Server returned malformed ID reply: %s", buf);
             close(sock);

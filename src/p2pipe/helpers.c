@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include "extern/logging.h"
+#include "p2pipe/log.h"
 #include "p2pipe/handshake.h"
 #include "p2pipe/metrics.h"
 #include "p2pipe/packet.h"
