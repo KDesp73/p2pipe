@@ -1,182 +1,171 @@
-# P2Pipe Protocol Specification
+# P2Pipe Communication Protocol Specification
 
 <!--toc:start-->
-- [Overview](#overview)
-- [1. Protocol Roles](#1-protocol-roles)
-- [2. Connection Establishment](#2-connection-establishment)
-  - [2.1 Handshake](#21-handshake)
-  - [2.2 Handshake Flow](#22-handshake-flow)
-- [3. Packet Structure](#3-packet-structure)
-- [4. Reliable Delivery](#4-reliable-delivery)
-  - [4.1 ACK Mechanism](#41-ack-mechanism)
-  - [4.2 Retransmission](#42-retransmission)
-  - [4.3 Buffer Management](#43-buffer-management)
-- [5. Flow Control](#5-flow-control)
-- [6. Threading Model](#6-threading-model)
-- [7. Packet Serialization](#7-packet-serialization)
-- [8. Error Handling](#8-error-handling)
-- [9. Metrics](#9-metrics)
-- [10. Summary Diagram](#10-summary-diagram)
+- [1. Overview](#1-overview)
+- [2. Roles and Modes](#2-roles-and-modes)
+- [3. Connection Establishment](#3-connection-establishment)
+  - [3.1 Handshake Initiation](#31-handshake-initiation)
+    - [Handshake Packet Format](#handshake-packet-format)
+    - [Example Flow](#example-flow)
+- [4. Packet Structure](#4-packet-structure)
+  - [4.1 Common Header](#41-common-header)
+  - [4.2 Signal Flags](#42-signal-flags)
+- [5. Reliability Layer](#5-reliability-layer)
+  - [5.1 Acknowledgment Model](#51-acknowledgment-model)
+  - [5.2 Retransmission](#52-retransmission)
+- [6. Flow Control](#6-flow-control)
+- [7. Serialization Rules](#7-serialization-rules)
+- [8. Error Handling and Recovery](#8-error-handling-and-recovery)
+- [9. Example Communication Flow](#9-example-communication-flow)
 <!--toc:end-->
 
-## Overview
+## 1. Overview
 
-P2Pipe is a custom UDP-based peer-to-peer reliable data transmission protocol.  
-It allows sending and receiving arbitrary payloads between peers with:
+The **P2Pipe Communication Protocol** defines a reliable, UDP-based, peer-to-peer data exchange mechanism.
+It is designed to provide **connection-oriented reliability** over an inherently unreliable transport, using:
 
-- Reliable delivery via ACKs and retransmissions
-- Packet sequencing
-- Handshake negotiation
-- End-of-stream signaling
-- Multithreaded operation
+* Connection negotiation via handshake
+* Sequenced data transmission
+* Acknowledgment (ACK)-based reliability
+* Retransmission and flow control
+* Explicit termination signaling
 
----
-
-## 1. Protocol Roles
-
-P2Pipe defines two modes:
-
-| Role       | Description |
-|------------|-------------|
-| **Sender*- (`MODE_SND`) | Initiates connection, sends data, manages retransmissions, waits for ACKs. |
-| **Receiver*- (`MODE_RCV`) | Receives data, acknowledges packets, maintains storage buffer for application reads. |
+This document specifies the structure, message types, and operational semantics of the P2Pipe communication protocol.
 
 ---
 
-## 2. Connection Establishment
+## 2. Roles and Modes
 
-### 2.1 Handshake
+Each peer operates in one of two roles during a session:
 
-Before sending data, peers exchange a handshake:
+| Role         | Identifier | Description                                                                                                              |
+| ------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **Sender**   | `MODE_SND` | Initiates connection and transmits data packets. Responsible for maintaining retransmission state and interpreting ACKs. |
+| **Receiver** | `MODE_RCV` | Waits for incoming connections, acknowledges received packets, and buffers data for application consumption.             |
 
-**Handshake Structure**
+---
 
-| Field          | Type   | Size  | Description |
-|----------------|--------|-------|-------------|
-| `buffer_cap`   | `uint32_t` | 4 B | Receiver buffer capacity |
-| `payload_len`  | `uint32_t` | 4 B | Total payload length (sender only) |
-| `hash`         | `uint64_t` | 8 B | FNV-1a hash of payload (sender only) |
+## 3. Connection Establishment
 
-**Serialization**
+### 3.1 Handshake Initiation
 
-- Fields are serialized in order: `buffer_cap` → `payload_len` → `hash`
-- Total handshake packet size: 16 bytes
+A peer must complete a **handshake exchange** before any data transmission occurs.
+This establishes mutual configuration and readiness between sender and receiver.
 
-### 2.2 Handshake Flow
+#### Handshake Packet Format
 
-1. Sender/Receiver creates a UDP socket on an ephemeral port.
-2. Client sends `HANDSHAKE` message:  
+| Field         | Type       | Size | Description                           |
+| ------------- | ---------- | ---- | ------------------------------------- |
+| `buffer_cap`  | `uint32_t` | 4 B  | Receiver’s advertised buffer capacity |
+
+All fields are serialized in network byte order.
+
+#### Example Flow
 
 ```
-HANDSHAKE VERSION=<VERSION> TYPE=SND|RCV
+Sender -> "HANDSHAKE VERSION=<v> TYPE=SND" # Server provides a session id
+Receiver -> "HANDSHAKE VERSION=<v> TYPE=RCV ID=<SESSION_ID>"
+
+# Both peers receive the following from the server
+PEER <IP> <PORT> VERSION=<v> TYPE=SND|RCV ID=<SESSION_ID>
 ```
-3. Server may reply with:
-- `WAIT`: client waits for a peer to connect
-- `PEER <ip> <port> <extra_info>`: provides peer IP, port, and metadata
-4. Sender sends handshake packet as a `SIGNAL_HANDSHAKE | SIGNAL_PAYLOAD` packet.
+
+Upon successful handshake acknowledgment, both peers transition to the **connected** state.
 
 ---
 
-## 3. Packet Structure
+## 4. Packet Structure
 
-Packets carry both control signals and payload data.
+### 4.1 Common Header
 
-| Field            | Type       | Size          | Description |
-|------------------|------------|---------------|-------------|
-| `signals`        | `uint8_t`  | 1 B           | Bitmask of PacketSignal flags |
-| `seq`            | `uint32_t` | 4 B           | Packet sequence number |
-| `len`            | `uint32_t` | 4 B           | Length of `data` payload |
-| `data`           | `uint8_t[]`| 1024 B max    | Payload data |
+All protocol packets follow a shared binary header layout:
 
-**Packet Signals**
+| Field     | Type        | Size    | Description                              |
+| --------- | ----------- | ------- | ---------------------------------------- |
+| `signals` | `uint8_t`   | 1 B     | Bitmask of control flags (see below)     |
+| `seq`     | `uint32_t`  | 4 B     | Sequence number (monotonic, per session) |
+| `len`     | `uint32_t`  | 4 B     | Length of `data` field                   |
+| `data`    | `uint8_t[]` | ≤1024 B | Payload data or control content          |
 
-| Signal                 | Value | Description |
-|------------------------|-------|-------------|
-| `SIGNAL_PAYLOAD`       | 1 << 0 | Data packet |
-| `SIGNAL_ACK`           | 1 << 1 | Acknowledgment of a packet |
-| `SIGNAL_RESEND`        | 1 << 2 | Request retransmission (currently unused) |
-| `SIGNAL_END`           | 1 << 3 | Marks end of transmission |
-| `SIGNAL_TERMINATE`     | 1 << 4 | Abort transmission |
-| `SIGNAL_HANDSHAKE`     | 1 << 5 | Handshake packet |
+### 4.2 Signal Flags
 
----
-
-## 4. Reliable Delivery
-
-### 4.1 ACK Mechanism
-
-- Every received payload packet triggers an ACK.
-- ACK packets carry the sequence number of the acknowledged packet:
-
-  ```c
-  Packet ack = PACKET_ACK(received_seq);
-  ```
-- Sender removes packets from buffer when ACKs arrive.
-
-### 4.2 Retransmission
-
-- Sender maintains a buffer of unacknowledged packets.
-- Retransmission thread periodically checks for packets exceeding `RETRANSMISSION_TIMEOUT_MS = 500ms` and resends them.
-- Multiple retransmissions continue until packet is acknowledged or connection closes.
-
-### 4.3 Buffer Management
-
-- Sender blocks if buffer is full until ACKs free space.
-- Receiver maintains a storage buffer for application reads.
+| Flag               | Bit      | Description                                        |
+| ------------------ | -------- | -------------------------------------------------- |
+| `SIGNAL_PAYLOAD`   | `1 << 0` | Standard data packet                               |
+| `SIGNAL_ACK`       | `1 << 1` | Acknowledges receipt of a specific sequence number |
+| `SIGNAL_RESEND`    | `1 << 2` | Requests retransmission (reserved for future use)  |
+| `SIGNAL_END`       | `1 << 3` | End of stream — all data sent                      |
+| `SIGNAL_TERMINATE` | `1 << 4` | Connection terminated unexpectedly                 |
+| `SIGNAL_HANDSHAKE` | `1 << 5` | Marks handshake payload                            |
 
 ---
 
-## 5. Flow Control
+## 5. Reliability Layer
 
-- Sender waits for handshake to complete before sending data.
-- Data is sent in `PACKET_BUFFER_SIZE = 1024` chunks.
-- `pipe_flush()` ensures all buffered packets are acknowledged before closing.
+### 5.1 Acknowledgment Model
 
----
-
-## 6. Threading Model
-
-| Thread Type           | Purpose                                              |
-| --------------------- | ---------------------------------------------------- |
-| Packet Listener       | Receives UDP packets and dispatches them             |
-| Retransmission Thread | Periodically retransmits unacknowledged packets      |
-| Thread Pool Workers   | Handles sending ACKs and asynchronous packet sending |
-
----
-
-## 7. Packet Serialization
-
-- All packet fields are serialized in network byte order where applicable.
-- Payload is copied verbatim up to 1024 bytes per packet.
-- Sequence numbers allow reordering detection.
-
----
-
-## 8. Error Handling
-
-- Socket errors are logged and may terminate the pipe.
-- Retransmission continues for timed-out packets.
-- Duplicate or stale ACKs are ignored.
-- Handshake failures abort connection setup.
-
----
-
-## 9. Metrics
-
-- `metrics.packets_sent` – total packets sent
-- `metrics.packets_received` – total packets received
-- `metrics.packets_acked` – total packets acknowledged
-
----
-
-## 10. Summary Diagram
+* Every data packet (`SIGNAL_PAYLOAD`) must trigger an acknowledgment.
+* ACK packets contain the **sequence number** of the received packet:
 
 ```
-[SENDER] ---> HANDSHAKE ---> [RECEIVER]
-   |                             |
-   | <--- PEER info / WAIT ---   |
-   |                             |
-[SENDER] ---> DATA PACKET ---> [RECEIVER]
-[SENDER] <--- ACK ------------ [RECEIVER]
-[SENDER] ---> END -----------> [RECEIVER]
+signals = SIGNAL_ACK
+seq = <acknowledged_sequence>
+```
+
+* The sender frees corresponding buffered packets upon receipt of an ACK.
+* Duplicate or stale ACKs are ignored.
+
+### 5.2 Retransmission
+
+* Unacknowledged packets are retained in a retransmission buffer.
+* Packets older than `RETRANSMISSION_TIMEOUT_MS` (default: 500 ms) are resent.
+* Retransmissions continue until acknowledgment or session termination.
+* The retransmission window is dynamically managed based on buffer capacity and congestion feedback.
+
+---
+
+## 6. Flow Control
+
+To prevent buffer exhaustion and excessive retransmissions:
+
+* The **sender** halts new transmissions when the receiver’s advertised buffer is full.
+* The **receiver** processes packets sequentially and maintains an application buffer.
+* The handshake defines both `buffer_cap` and `payload_len` — these values must be respected throughout the session.
+* `END` and `TERMINATE` signals mark logical and abrupt session closures respectively.
+
+---
+
+## 7. Serialization Rules
+
+* Multi-byte integers are encoded in **network byte order (big-endian)**.
+* The `data` section is binary-safe and unmodified (no compression or framing).
+* Packet size must not exceed `HEADER_SIZE + payload_len`.
+* Sequence numbers start at 0 and increment monotonically.
+
+---
+
+## 8. Error Handling and Recovery
+
+* Invalid or malformed packets are discarded silently.
+* Repeated handshake failures abort the session.
+* Timeouts on both sides trigger retransmission or termination depending on role.
+* After a `SIGNAL_TERMINATE` message, peers must close sockets and release buffers immediately.
+
+---
+
+## 9. Example Communication Flow
+
+```
+   [Sender]                              [Receiver]
+       |                                       |
+       |--- HANDSHAKE (TYPE=SND, ID=abc) ----->|
+       |<--------- WAIT / PEER ----------------|
+       |--- [SIGNAL_HANDSHAKE + payload] ----->|
+       |<----------- ACK(seq=0) ---------------|
+       |--- DATA(seq=1, len=1024) ------------>|
+       |<----------- ACK(seq=1) ---------------|
+       |--- END(seq=N) ----------------------->|
+       |<----------- ACK(seq=N) ---------------|
+       |--- TERMINATE ------------------------>|
+       |<--- ACK(seq=TERMINATE) ---------------|
 ```
