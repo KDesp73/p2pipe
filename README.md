@@ -5,21 +5,6 @@ It provides reliable delivery, sequencing, and flow control — all without requ
 
 The project includes both the **protocol implementation** and a **CLI tool** to start, connect, and manage P2Pipe sessions.
 
----
-
-## Table of Contents
-
-* [Overview](#overview)
-* [Installation](#installation)
-* [Usage](#usage)
-
-  * [Commands](#commands)
-  * [Options](#options)
-  * [Examples](#examples)
-* [Protocol Summary](#protocol-summary)
-* [License](#license)
-
----
 
 ## Overview
 
@@ -120,7 +105,7 @@ p2pipe talk -I 127.0.0.1 -P 9000 -s input.bin
 
 ## Protocol Summary
 
-P2Pipe uses a **custom UDP-based reliable transport protocol** defined in [`docs/Protocol.md`](./docs/Specification.md).
+P2Pipe uses a **custom UDP-based reliable transport protocol** defined in [`docs/Specification.md`](./docs/Specification.md).
 It ensures reliability and order without TCP by using:
 
 * **Handshake negotiation** (connection setup)
@@ -153,7 +138,7 @@ p2pipe serve -P 9000
 ```bash
 p2pipe talk -I 127.0.0.1 -P 9000 -s message.txt
 ```
-> The session id is being printed on stdout
+> The session id is logged on stdout
 
 ### 3. Start the receiver
 
