@@ -27,6 +27,7 @@ void context_reset(Context* ctx)
     ctx->capacity = 0;
     ctx->command = COMMAND_NONE;
     ctx->ip = NULL;
+    ctx->id = NULL;
     ctx->src = NULL;
     ctx->dst= NULL;
 }
@@ -37,6 +38,10 @@ void context_free(Context* ctx)
     if(ctx->ip) {
         free(ctx->ip);
         ctx->ip = NULL;
+    }
+    if(ctx->id) {
+        free(ctx->id);
+        ctx->id = NULL;
     }
     if(ctx->src) {
         free(ctx->src);

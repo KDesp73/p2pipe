@@ -1,6 +1,5 @@
 TODO: errno style error handling
 TODO: send and verify hash
-TODO: collect metrics
 TODO: log to file
 TODO: progress bar
 TODO: server handling multiple sessions in parallel
@@ -12,3 +11,4 @@ DONE: resending packets if lost
 DONE: send hash on handshake
 DONE: send payload length on handshake
 DONE: trade info on seperate handshake package
+DONE: collect metrics

@@ -90,13 +90,11 @@ void metrics_end(Metrics* metrics)
 
 void metrics_free(Metrics* metrics)
 {
-#ifndef METRICS_ENABLED
-    return;
-#endif
     if(!metrics) return;
     if(metrics->id){
         free(metrics->id);
         metrics->id = NULL;
+        DEBU("Metrics id freed");
     }
 }
 

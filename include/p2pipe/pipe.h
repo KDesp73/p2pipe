@@ -2,6 +2,7 @@
 #define PIPE_H
 
 #include "p2pipe/buffer.h"
+#include "p2pipe/handshake.h"
 #include "p2pipe/packet.h"
 #include "p2pipe/storage.h"
 #include "p2pipe/threads.h"
@@ -41,7 +42,7 @@ typedef struct {
     TPTaskFn onwrite;
 } Pipe;
 
-int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity, TPTaskFn onread);
+int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, const char* id, size_t capacity, TPTaskFn onread);
 bool pipe_read(Pipe* pipe, size_t n_bytes);
 void pipe_rcv_close(Pipe* pipe);
 
@@ -56,5 +57,6 @@ void pipe_free(Pipe* pipe);
 bool pipe_write_packet_sync(Pipe* pipe, const Packet* packet, struct sockaddr_in *dest);
 bool pipe_write_packet_async(Pipe* pipe, const Packet* packet, struct sockaddr_in *dest);
 
+int pipe_handshake(Pipe* pipe, const char* ip, size_t port, const char* id, const Handshake* handshake);
 
 #endif // PIPE_H

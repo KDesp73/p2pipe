@@ -21,7 +21,7 @@
 
 ThreadPool* tp = NULL;
 
-int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity, TPTaskFn onread)
+int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, const char* id, size_t capacity, TPTaskFn onread)
 {
     if (!pipe || !ip) return -1;
 
@@ -37,7 +37,7 @@ int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, size_t capacity, TPTa
     Handshake handshake = {
         .buffer_cap = capacity,
     };
-    int sock = pipe_handshake(pipe, ip, port, &handshake);
+    int sock = pipe_handshake(pipe, ip, port, id, &handshake);
     if (sock < 0) {
         pipe_free(pipe);
         return -1;
@@ -106,7 +106,7 @@ int pipe_snd_open(Pipe* pipe, const char* ip, size_t port, size_t capacity, TPTa
     Handshake handshake = {
         .buffer_cap = capacity
     };
-    int sock = pipe_handshake(pipe, ip, port, &handshake);
+    int sock = pipe_handshake(pipe, ip, port, NULL, &handshake);
     if (sock < 0) {
         pipe_free(pipe);
         return -1;

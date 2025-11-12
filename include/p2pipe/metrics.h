@@ -54,8 +54,8 @@ void metrics_print(const Metrics* metrics);
     #define METRICS_SET(field, value)
 #else
     #define METRICS_INCR(field) metrics.field++
-    #define METRICS_ADD(field, num) metrics.field += num
-    #define METRICS_SET(field, value) metrics.field = value
+    #define METRICS_ADD(field, num) metrics.field += (num)
+    #define METRICS_SET(field, value) metrics.field = (value)
 #endif // METRICS_ENABLED
 
 

@@ -35,16 +35,16 @@ _p2pipe () {
     local words cword
     _get_comp_words_by_ref -n "$COMP_WORDBREAKS" words cword
 
-    declare -a literals=(serve -P --port --help listen -I --ip -C --capacity -d --dst talk -s --src -h --help -v --version)
+    declare -a literals=(serve -P --port --help listen -I --ip -C --capacity -d --dst -i --id talk -s --src -h --help -v --version)
     declare -a regexes=()
     declare -A literal_transitions=()
     declare -A nontail_transitions=()
-    literal_transitions[0]="([0]=1 [4]=2 [11]=3 [14]=4 [15]=4 [16]=4 [17]=4)"
-    literal_transitions[1]="([1]=13 [2]=13 [3]=1)"
-    literal_transitions[2]="([1]=9 [2]=9 [3]=2 [5]=10 [6]=10 [7]=11 [8]=11 [9]=12 [10]=12)"
-    literal_transitions[3]="([1]=5 [2]=5 [3]=3 [5]=6 [6]=6 [7]=7 [8]=7 [12]=8 [13]=8)"
-    literal_transitions[4]="([14]=4 [15]=4 [16]=4 [17]=4)"
-    declare -A match_anything_transitions=([7]=3 [9]=2 [10]=2 [11]=2 [12]=2 [8]=3 [6]=3 [13]=1 [5]=3)
+    literal_transitions[0]="([0]=1 [4]=2 [13]=3 [16]=4 [17]=4 [18]=4 [19]=4)"
+    literal_transitions[1]="([1]=5 [2]=5 [3]=1)"
+    literal_transitions[2]="([1]=10 [2]=10 [3]=2 [5]=11 [6]=11 [7]=12 [8]=12 [9]=13 [10]=13 [11]=14 [12]=14)"
+    literal_transitions[3]="([1]=6 [2]=6 [3]=3 [5]=7 [6]=7 [7]=8 [8]=8 [14]=9 [15]=9)"
+    literal_transitions[4]="([16]=4 [17]=4 [18]=4 [19]=4)"
+    declare -A match_anything_transitions=([10]=2 [11]=2 [12]=2 [7]=3 [14]=2 [6]=3 [8]=3 [9]=3 [13]=2 [5]=1)
     declare -A subword_transitions
 
     local state=0
@@ -81,11 +81,11 @@ _p2pipe () {
         return 1
     done
 
-    declare -A literal_transitions_level_0=([4]="14 16" [0]="0 4 11 14 16" [3]="1 2 3 5 6 7 8 12 13" [2]="1 2 3 5 6 7 8 9 10" [1]="1 2 3")
-    declare -A literal_transitions_level_1=([0]="15 17" [4]="15 17")
+    declare -A literal_transitions_level_0=([4]="16 18" [0]="0 4 13 16 18" [3]="1 2 3 5 6 7 8 14 15" [2]="1 2 3 5 6 7 8 9 10 11 12" [1]="1 2 3")
+    declare -A literal_transitions_level_1=([0]="17 19" [4]="17 19")
     declare -A subword_transitions_level_0=()
     declare -A subword_transitions_level_1=()
-    declare -A commands_level_0=([12]="0" [8]="0")
+    declare -A commands_level_0=([9]="0" [13]="0")
     declare -A commands_level_1=()
     declare -A nontail_commands_level_0=()
     declare -A nontail_regexes_level_0=()

@@ -21,10 +21,12 @@ typedef enum {
    ARG_CAPACITY = 'C',
    ARG_SRC = 's',
    ARG_DST = 'd',
+   ARG_ID = 'i',
 } CliArgs;
 
 typedef struct {
     char* ip;
+    char* id;
     int port;
     size_t capacity;
     char* src;

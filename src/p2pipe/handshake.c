@@ -1,9 +1,12 @@
 #include "p2pipe/handshake.h"
 #include "p2pipe/helpers.h"
+#include "p2pipe/id.h"
 #include "p2pipe/metrics.h"
 #include "extern/logging.h"
 #include "p2pipe/packet.h"
+#include "p2pipe/pipe.h"
 #include "p2pipe/version.h"
+#include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -172,10 +175,15 @@ static unsigned short get_available_udp_port(void)
     return port;
 }
 
-int pipe_handshake(Pipe* pipe, const char* ip, size_t port, const Handshake* handshake)
+int pipe_handshake(Pipe* pipe, const char* ip, size_t port, const char* id, const Handshake* handshake)
 {
+    char idkv[BASE56_LEN + 3 + 1];
+    snprintf(idkv, sizeof(idkv), "ID=%s", id ? id : "N/A");
     char payload[512];
-    snprintf(payload, sizeof(payload), "VERSION=%s TYPE=%s", VERSION_STRING, pipe->mode == MODE_SND ? "SND" : "RCV");
+    snprintf(payload, sizeof(payload), "VERSION=%s TYPE=%s %s",
+             VERSION_STRING,
+             pipe->mode == MODE_SND ? "SND" : "RCV",
+             (pipe->mode == MODE_RCV) ? idkv : "");
 
     char buf[1024];
     ssize_t n;
@@ -190,38 +198,62 @@ int pipe_handshake(Pipe* pipe, const char* ip, size_t port, const Handshake* han
         return -1;
     }
 
+    if ((size_t)n >= sizeof(buf)) n = sizeof(buf) - 1;
     buf[n] = '\0';
-    if (buf[n - 1] == '\n') buf[n - 1] = '\0';
+    if (n > 0 && buf[n - 1] == '\n') buf[n - 1] = '\0';
 
+    if (strncmp(buf, "ID=", 3) == 0) {
+        char assigned_id[BASE56_LEN + 1] = {0};
+        size_t i = 0;
+        const char *p = buf + 3;
+        while (*p && !isspace((unsigned char)*p) && i < BASE56_LEN) {
+            assigned_id[i++] = *p++;
+        }
+        assigned_id[i] = '\0';
 
-    if (strcmp(buf, "WAIT") == 0) {
-        INFO("Server replied WAIT — waiting for peer...");
+        if (assigned_id[0] != '\0') {
+            METRICS_SET(id, strdup(assigned_id));
+            INFO("Server assigned session ID=%s; waiting for peer...", assigned_id);
+        } else {
+            ERRO("Server returned malformed ID reply: %s", buf);
+            close(sock);
+            return -1;
+        }
 
-        for (;;) {
-            struct sockaddr_storage from;
-            socklen_t fromlen = sizeof(from);
+        if (strstr(buf, "WAIT") != NULL) {
+            for (;;) {
+                struct sockaddr_storage from;
+                socklen_t fromlen = sizeof(from);
 
-            struct timeval tv = { .tv_sec = 60, .tv_usec = 0 };
-            fd_set rfds;
-            FD_ZERO(&rfds);
-            FD_SET(sock, &rfds);
+                struct timeval tv = { .tv_sec = 360, .tv_usec = 0 };
+                fd_set rfds;
+                FD_ZERO(&rfds);
+                FD_SET(sock, &rfds);
 
-            int rv = select(sock + 1, &rfds, NULL, NULL, &tv);
-            if (rv > 0 && FD_ISSET(sock, &rfds)) {
-                ssize_t r = recvfrom(sock, buf, sizeof(buf) - 1, 0,
-                                     (struct sockaddr*)&from, &fromlen);
-                if (r <= 0) continue;
-                buf[r] = '\0';
-                if (strncmp(buf, "PEER ", 5) == 0) break;
-            } else if (rv == 0) {
-                ERRO("Timeout while waiting for peer info");
-                close(sock);
-                return -1;
-            } else {
-                perror("select");
-                close(sock);
-                return -1;
+                int rv = select(sock + 1, &rfds, NULL, NULL, &tv);
+                if (rv > 0 && FD_ISSET(sock, &rfds)) {
+                    ssize_t r = recvfrom(sock, buf, sizeof(buf) - 1, 0,
+                                         (struct sockaddr*)&from, &fromlen);
+                    if (r <= 0) continue;
+                    if ((size_t)r >= sizeof(buf)) r = sizeof(buf) - 1;
+                    buf[r] = '\0';
+                    if (strncmp(buf, "PEER ", 5) == 0) break;
+                } else if (rv == 0) {
+                    ERRO("Timeout while waiting for peer info");
+                    close(sock);
+                    return -1;
+                } else {
+                    perror("select");
+                    close(sock);
+                    return -1;
+                }
             }
+        } else if (strncmp(buf, "PEER ", 5) == 0) {
+            // Unlikely. Fall-through
+        } else {
+            ERRO("Unknown server response after ID: %s", buf);
+            close(sock);
+            return -1;
         }
     }
 
@@ -239,33 +271,40 @@ int pipe_handshake(Pipe* pipe, const char* ip, size_t port, const Handshake* han
 
         INFO("Peer info: %s:%d, extra info: %s",
              peer_ip, peer_port,
-             (parsed == 3) ? peer_info : "(none)");
+             (parsed == 3 && peer_info[0]) ? peer_info : "(none)");
 
-        struct info {
-            char* version;
-            char* id;
-        } info;
-        char* token = strtok(peer_info, " ");
-        while (token) {
-            if (strncmp(token, "VERSION=", 8) == 0) {
-                info.version = strdup(token + 8);
-                if(strcmp(info.version, VERSION_STRING) != 0) {
-                    WARN("Peer is using a different version: %s", info.version);
-                }
-                free(info.version);
-            } else if (strncmp(token, "ID=", 3) == 0) {
-                info.id = strdup(token + 3);
-                METRICS_SET(id, info.id);
-            }
-            token = strtok(NULL, " ");
+        char info_copy[512];
+        info_copy[0] = '\0';
+        if (parsed == 3) {
+            strncpy(info_copy, peer_info, sizeof(info_copy) - 1);
+            info_copy[sizeof(info_copy) - 1] = '\0';
         }
 
-#ifndef METRICS_ENABLED
-        free(info.id);
-#endif
+        char peer_version[128] = {0};
+        char peer_id[BASE56_LEN + 1] = {0};
+
+        if (parsed == 3 && info_copy[0]) {
+            char *saveptr = NULL;
+            char *token = strtok_r(info_copy, " ", &saveptr);
+            while (token) {
+                if (strncmp(token, "VERSION=", 8) == 0) {
+                    strncpy(peer_version, token + 8, sizeof(peer_version) - 1);
+                    peer_version[sizeof(peer_version) - 1] = '\0';
+                    if (strcmp(peer_version, VERSION_STRING) != 0) {
+                        WARN("Peer is using a different version: %s", peer_version);
+                    }
+                } else if (strncmp(token, "ID=", 3) == 0 && metrics.id == NULL) {
+                    strncpy(peer_id, token + 3, sizeof(peer_id) - 1);
+                    peer_id[sizeof(peer_id) - 1] = '\0';
+                    metrics.id = strdup(peer_id);
+                }
+                token = strtok_r(NULL, " ", &saveptr);
+            }
+        }
+
         struct sockaddr_in peer_addr = {0};
         peer_addr.sin_family = AF_INET;
-        peer_addr.sin_port = htons(peer_port);
+        peer_addr.sin_port = htons((uint16_t)peer_port);
         if (inet_pton(AF_INET, peer_ip, &peer_addr.sin_addr) <= 0) {
             ERRO("Invalid peer IP: %s", peer_ip);
             close(sock);
@@ -275,15 +314,22 @@ int pipe_handshake(Pipe* pipe, const char* ip, size_t port, const Handshake* han
         pipe->sock_fd = sock;
         pipe->peer_addr = peer_addr;
 
-        Packet handshake_pkt = {0};
+        Packet handshake_pkt;
+        memset(&handshake_pkt, 0, sizeof(handshake_pkt));
         handshake_pkt.signals = SIGNAL_HANDSHAKE | SIGNAL_PAYLOAD;
         size_t len = handshake_serialize(handshake, handshake_pkt.data, sizeof(handshake_pkt.data));
-        if(len == 0) {
+        if (len == 0) {
             ERRO("Failed to serialize handshake info");
+            close(sock);
             return -1;
         }
         handshake_pkt.len = len;
-        if(!pipe_write_packet_sync(pipe, &handshake_pkt, NULL)) return -1;
+
+        if (!pipe_write_packet_sync(pipe, &handshake_pkt, NULL)) {
+            ERRO("Failed to send handshake packet");
+            close(sock);
+            return -1;
+        }
 
         return sock;
     }

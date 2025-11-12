@@ -20,6 +20,7 @@ p2pipe <COMMANDS> | [<OPTIONS>...] ;
 
 <LISTEN-OPTIONS> ::= <CLIENT-OPTIONS>
                    | (-d <PATH> | --dst <PATH>) "Specify the destination file"
+                   | (-i <ID> | --id <ID>) "Specify the session id"
                    ;
 
 <TALK-OPTIONS> ::= <CLIENT-OPTIONS>

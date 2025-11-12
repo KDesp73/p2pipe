@@ -35,6 +35,10 @@ bool listen_handler(Context context)
         ERRO("Please provide a valid port number");
         return false;
     }
+    if (!context.id) {
+        ERRO("Please provide the session id");
+        return false;
+    }
     if (!context.ip) {
         ERRO("Please provide an ip");
         return false;
@@ -48,7 +52,7 @@ bool listen_handler(Context context)
     METRICS_SET(buffer_capacity, capacity);
 
     Pipe pipe = {0};
-    int sock = pipe_rcv_open(&pipe, context.ip, context.port, capacity, NULL);
+    int sock = pipe_rcv_open(&pipe, context.ip, context.port, context.id, capacity, NULL);
     if (sock <= 0) {
         return false;
     }
@@ -161,6 +165,9 @@ void sigint_handler(int sig)
 Metrics metrics;
 int main(int argc, char** argv)
 {
+#ifdef METRICS_ENABLED
+    printf("[DEBU] Metrics enabled\n");
+#endif
     signal(SIGINT, sigint_handler);
 
     metrics_init(&metrics, METRICS_FILE);
@@ -169,6 +176,7 @@ int main(int argc, char** argv)
         cli_arg_new(ARG_HELP, "help", "", no_argument),
         cli_arg_new(ARG_VERSION, "version", "", no_argument),
         cli_arg_new(ARG_IP, "ip", "", required_argument),
+        cli_arg_new(ARG_ID, "id", "", required_argument),
         cli_arg_new(ARG_PORT, "port", "", required_argument),
         cli_arg_new(ARG_CAPACITY, "capacity", "", required_argument),
         cli_arg_new(ARG_SRC, "src", "", required_argument),
@@ -192,6 +200,9 @@ int main(int argc, char** argv)
                 goto cleanup;
             case ARG_IP:
                 ctx.ip = strdup(optarg);
+                break;
+            case ARG_ID:
+                ctx.id = strdup(optarg);
                 break;
             case ARG_PORT:
                 if(!validate_int(optarg)) {

@@ -369,7 +369,8 @@ void packet_listener(void* arg)
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 continue; 
             }
-            ERRO("Critical recvfrom error: %s", strerror(errno));
+            if(pipe->running)
+                ERRO("Critical recvfrom error: %s", strerror(errno));
             pipe->running = false;
             return;
         }
