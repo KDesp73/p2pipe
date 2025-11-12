@@ -95,7 +95,6 @@ void metrics_free(Metrics* metrics)
     if(metrics->id){
         free(metrics->id);
         metrics->id = NULL;
-        DEBU("Metrics id freed");
     }
 }
 

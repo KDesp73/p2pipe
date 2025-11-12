@@ -1,6 +1,3 @@
-TODO: errno style error handling
-TODO: log to file
-TODO: progress bar
 DONE: storage
 DONE: multithreaded sending/receiving
 DONE: send/receive acks
@@ -11,3 +8,4 @@ DONE: trade info on seperate handshake package
 DONE: collect metrics
 DONE: server handling multiple sessions in parallel
 DONE: receiver using existing session id
+DONE: log to file

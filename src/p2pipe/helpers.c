@@ -342,7 +342,6 @@ static void process_handshake(Pipe* pipe, const Packet* packet)
         ERRO("Failed to deserialize handshake");
         return;
     }
-    handshake_print(&handshake);
 
     pipe->handshake_completed = true;
 

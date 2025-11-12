@@ -1,9 +1,9 @@
 #include "futils.h"
 #include "help.h"
 #include "futils.h"
-#include "p2pipe/helpers.h"
 #include "p2pipe/log.h"
 #include "p2pipe/metrics.h"
+#include "p2pipe/packet.h"
 #include "p2pipe/storage.h"
 #include "validation.h"
 #include "p2pipe/bootstrap.h"
@@ -140,6 +140,7 @@ bool talk_handler(Context context)
 
     bool ok;
     size_t size = file_size(context.src);
+    pipe.payload_len = size;
     METRICS_SET(payload_len, size);
     if (size > LARGE_FILE_THRESHOLD) {
         ok = stream_file(context.src, &pipe);
