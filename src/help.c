@@ -18,7 +18,7 @@
 void help()
 {
     PTN("%sUSAGE%s", ANSI_BOLD, ANSI_RESET);
-    PTNI("p2p <COMMAND> <OPTIONS>...");
+    PTNI("p2pipe <COMMAND> <OPTIONS>...");
     PTN(" ");
 
     PTN("%sCOMMANDS%s", ANSI_BOLD, ANSI_RESET);
@@ -36,6 +36,7 @@ void help()
     PTNI("-s --src          Specify the source file");
     PTNI("-d --dst          Specify the destination file");
     PTNI("-C --capacity     Specify the buffer capacity");
+    PTNI("-i --id           Specify the session id");
 
     PTN(" ");
     PTN("Written by KDesp73 (Konstantinos Despoinidis)");
@@ -70,4 +71,5 @@ void talk_help() {
 void listen_help() {
     client_help("listen");
     PTNI("-d --dst          Specify the destination file");
+    PTNI("-i --id           Specify the session id");
 }

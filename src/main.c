@@ -170,9 +170,6 @@ void sigint_handler(int sig)
 
 int main(int argc, char** argv)
 {
-#ifdef METRICS_ENABLED
-    printf("[DEBU] Metrics enabled\n");
-#endif
     signal(SIGINT, sigint_handler);
     logging_set_file();
 

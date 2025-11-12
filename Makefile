@@ -100,6 +100,16 @@ dist: $(SRC_FILES) ## Create a tarball of the project
 	mkdir -p $(DIST_DIR)
 	tar -czvf $(DIST_DIR)/$(TARGET)-$(VERSION).tar.gz $(SRC_DIR) $(INCLUDE_DIR) Makefile README.md
 
+.PHONY: install
+install: all ## Installs p2pipe system-wide
+	@echo "[INFO] Installing p2pipe..."
+	cp p2pipe /usr/local/bin
+	cp libp2pipe.* /usr/lib
+	cp -r include/p2pipe /usr/local/include/
+	cp docs/autocomplete/p2pipe.zsh /usr/share/zsh/functions/Completion/_p2pipe
+	# TODO: Install other scripts
+
+
 ## Generate compile_commands.json
 .PHONY: compile_commands.json
 compile_commands.json: $(SRC_FILES) ## Generate compile_commands.json
@@ -122,8 +132,3 @@ autocomplete: ## Generate autocomplete scripts for bash, zsh and fish
 	complgen  --zsh ./docs/autocomplete/p2pipe.zsh  ./docs/autocomplete/p2pipe.usage
 	complgen --bash ./docs/autocomplete/p2pipe.bash ./docs/autocomplete/p2pipe.usage
 	complgen --fish ./docs/autocomplete/p2pipe.fish ./docs/autocomplete/p2pipe.usage
-	sudo cp docs/autocomplete/p2pipe.zsh /usr/share/zsh/functions/Completion/_p2pipe
-	# TODO: Install other scripts
-
-# Phony targets to avoid conflicts with file names
-.PHONY: all clean distclean install uninstall dist compile_commands.json help check_tools verbose
