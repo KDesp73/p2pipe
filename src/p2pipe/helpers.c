@@ -60,6 +60,7 @@ void retransmission_thread(void* arg)
             
             if(retransmitted_count > 0) {
                 INFO("Retransmitted %zu packets.", retransmitted_count);
+                METRICS_ADD(retransmits, retransmitted_count);
             }
         }
 
@@ -111,8 +112,8 @@ void send_job_fn(void *arg)
         WARN("Failed to send %s #%u (%zu bytes). Error: %s",
              type, job->packet.seq, len, strerror(errno));
     } else {
-        if(job->packet.signals & SIGNAL_ACK) METRICS_INCR(acks_sent); 
-        else  METRICS_INCR(packets_sent);
+        if(job->packet.signals & SIGNAL_ACK) { METRICS_INCR(acks_sent); }
+        else { METRICS_INCR(packets_sent); }
         INFO("%s packet #%u (%zu bytes) sent successfully to peer.",
              type, job->packet.seq, sent);
     }
@@ -146,6 +147,7 @@ void recv_job_fn(void *arg)
                  packet->seq, packet->len, pipe->storage.count);
         } else {
             WARN("Dropping packet #%u. Storage not ready for data delivery.", packet->seq);
+            METRICS_INCR(packets_discarded);
         }
 
         pthread_mutex_unlock(&pipe->storage_lock);
@@ -161,9 +163,11 @@ void recv_job_fn(void *arg)
                  INFO("ACK #%u queued for sequence #%u.", ack.seq, packet->seq);
             } else {
                  WARN("Failed to queue ACK #%u for sequence #%u.", ack.seq, packet->seq);
+                 METRICS_INCR(acks_lost);
                  free(sj);
             }
         } else {
+            METRICS_INCR(acks_lost);
             ERRO("Failed to allocate memory for ACK send job for packet #%u.", packet->seq);
         }
     }
@@ -179,6 +183,7 @@ void recv_job_fn(void *arg)
                      packet->seq, pipe->buffer.count);
             } else {
                 INFO("Received duplicate/stale ACK #%u. Not found in sender buffer.", packet->seq);
+                METRICS_INCR(packets_duplicate);
             }
             pthread_mutex_unlock(&pipe->ack_lock);
         }
@@ -324,6 +329,7 @@ static void process_ack(Pipe* pipe, const Packet* packet)
         INFO("Successfully processed ACK #%u. Signaling waiting sender.", packet->seq);
     } else {
         WARN("Received duplicate/stale ACK #%u. Not found in sender buffer.", packet->seq);
+        METRICS_INCR(packets_duplicate);
     }
     pthread_mutex_unlock(&pipe->ack_lock);
 }

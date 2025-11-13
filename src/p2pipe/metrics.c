@@ -9,9 +9,16 @@
 #include <unistd.h>
 #include <sys/time.h>
 
+void metrics_reset(Metrics* metrics)
+{
+    memset(metrics, 0, sizeof(Metrics));
+    metrics->type = -1;
+}
+
 bool metrics_init(Metrics* metrics, const char* path)
 {
 #ifndef METRICS_ENABLED
+    printf("Metrics are disabled\n");
     return false;
 #endif
 
@@ -32,18 +39,7 @@ bool metrics_init(Metrics* metrics, const char* path)
 
     fclose(fd);
 
-    metrics->id = NULL;
-    metrics->packets_sent = 0;
-    metrics->packets_received = 0;
-    metrics->packets_lost = 0;
-    metrics->acks_lost = 0;
-    metrics->acks_sent = 0;
-    metrics->acks_received = 0;
-    metrics->start = 0;         
-    metrics->end = 0;           
-    metrics->buffer_capacity = 0;
-    metrics->payload_len = 0;
-    metrics->type = -1;
+    metrics_reset(metrics);
 
     return true;
 }

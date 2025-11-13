@@ -16,7 +16,7 @@
  */
 static void storage_try_deliver(Storage* storage)
 {
-    while (storage->count > 0 && storage->packets[0]->seq == storage->next_expected_seq) {
+    while (storage->count > 0 && storage->packets[0] && storage->packets[0]->seq == storage->next_expected_seq) {
         Packet* pkt = storage->packets[0];
 
         if (storage->file_out && pkt->len > 0) {
@@ -82,7 +82,6 @@ void storage_free(Storage* storage)
     if (!storage || !storage->ready)
         return;
 
-    // Close the file output handle
     if (storage->file_out) {
         fclose(storage->file_out);
         storage->file_out = NULL;
@@ -109,7 +108,6 @@ void storage_resize(Storage* storage, size_t capacity)
         return;
 
     if (capacity > storage->capacity) {
-        // Zero out the newly allocated space
         memset(new_packets + storage->capacity, 0,
                (capacity - storage->capacity) * sizeof(Packet*));
     }
@@ -134,12 +132,14 @@ void storage_append(Storage* storage, const Packet* packet)
 
     if (packet->seq < storage->next_expected_seq) {
         INFO("Dropping duplicate/already delivered packet #%u", packet->seq);
+        METRICS_INCR(packets_duplicate);
         return;
     }
     
     for (size_t i = 0; i < storage->count; ++i) {
         if (storage->packets[i] && storage->packets[i]->seq == packet->seq) {
             INFO("Dropping duplicate packet #%u found in storage", packet->seq);
+            METRICS_INCR(packets_duplicate);
             return;
         }
     }
@@ -151,7 +151,7 @@ void storage_append(Storage* storage, const Packet* packet)
 
     size_t pos = storage->count;
     for (size_t i = 0; i < storage->count; ++i) {
-        if (storage->packets[i]->seq > packet->seq) {
+        if (storage->packets[i] && storage->packets[i]->seq > packet->seq) {
             pos = i;
             break;
         }

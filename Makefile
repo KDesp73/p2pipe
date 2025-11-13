@@ -22,14 +22,14 @@ VERSION_PATCH = $(shell sed -n -e 's/\#define VERSION_PATCH \([0-9]*\)/\1/p' $(v
 VERSION = $(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_PATCH)
 
 DEFINES = 
+SANITIZERS = -fsanitize=address,undefined -fno-omit-frame-pointer -fno-optimize-sibling-calls
 
 # Determine the build type
 ifeq ($(type), RELEASE)
 	CFLAGS += -O3
 else
 	DEFINES += -DMETRICS_ENABLED -DDEBUG
-	SANITIZERS = -fsanitize=address,undefined
-	CFLAGS  += $(DEFINES) -ggdb -fno-omit-frame-pointer -fno-optimize-sibling-calls
+	CFLAGS  += $(DEFINES) -ggdb 
 	CFLAGS  += -Wall -Wextra -Wno-unused-parameter -Wno-unused-function
 	CFLAGS  += $(SANITIZERS)
 	LDFLAGS += $(SANITIZERS)
@@ -87,7 +87,7 @@ static: $(BUILD_DIR) $(OBJ_LIB_FILES) ## Build static library
 .PHONY: clean
 clean: ## Remove all build files and the executable
 	@echo "[INFO] Cleaning up build directory and executable."
-	rm -rf $(BUILD_DIR) $(TARGET) $(SO_NAME) $(A_NAME)
+	rm -rf $(BUILD_DIR) $(TARGET) $(SO_NAME) $(A_NAME) sender receiver
 
 .PHONY: distclean
 distclean: clean ## Perform a full clean, including backup and temporary files
@@ -132,3 +132,10 @@ autocomplete: ## Generate autocomplete scripts for bash, zsh and fish
 	complgen  --zsh ./docs/autocomplete/p2pipe.zsh  ./docs/autocomplete/p2pipe.usage
 	complgen --bash ./docs/autocomplete/p2pipe.bash ./docs/autocomplete/p2pipe.usage
 	complgen --fish ./docs/autocomplete/p2pipe.fish ./docs/autocomplete/p2pipe.usage
+
+
+METRICS_DEFINES = -DMETRICS_ENABLED -DDEBUG
+.PHONY: metrics 
+metrics: metrics/sender.c metrics/receiver.c libp2pipe.a
+	$(CC) metrics/sender.c -o sender -Iinclude $(SANITIZERS) $(METRICS_DEFINES) $(LDFLAGS) -L. -lp2pipe -pthread
+	$(CC) metrics/receiver.c -o receiver -Iinclude $(SANITIZERS) $(METRICS_DEFINES) $(LDFLAGS) -L. -lp2pipe -pthread

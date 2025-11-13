@@ -152,6 +152,7 @@ bool pipe_write(Pipe* pipe, void* payload, size_t len)
         memcpy(packet.data, data + offset, packet.len);
 
         pthread_mutex_lock(&pipe->ack_lock);
+        if (pipe->buffer.count >= pipe->buffer.capacity) METRICS_INCR(sender_paused);
         while (pipe->buffer.count >= pipe->buffer.capacity) {
             WARN("Buffer full (%zu/%zu). Waiting for ACKs...",
                  pipe->buffer.count, pipe->buffer.capacity);
