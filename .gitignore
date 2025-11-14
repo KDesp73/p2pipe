@@ -1,6 +1,7 @@
 build
 compile_commands.json
 .cache
+__pycache__
 
 *.o
 
