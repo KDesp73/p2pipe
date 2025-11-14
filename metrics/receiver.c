@@ -20,8 +20,8 @@ FILE *log_file = NULL;
 
 static void usage(const char *prog)
 {
-    fprintf(stderr, "Usage: %s <id> <expected_N> <repeats>\n", prog);
-    fprintf(stderr, "Example: %s ukWhu4vgPg75L9gs 1000 3\n", prog);
+    fprintf(stderr, "Usage: %s <expected_N> <repeats> <id>\n", prog);
+    fprintf(stderr, "Example: %s 1000 3 ukWhu4vgPg75L9gs\n", prog);
     exit(EXIT_FAILURE);
 }
 
@@ -33,9 +33,9 @@ int main(int argc, char **argv)
     if (argc < 4)
         usage(argv[0]);
 
-    const char *id = argv[1];
-    size_t expected_N = (size_t)atoll(argv[2]);
-    int repeats = atoi(argv[3]);
+    size_t expected_N = (size_t)atoll(argv[1]);
+    int repeats = atoi(argv[2]);
+    const char *id = argv[3];
     int rc = 0;
 
     Pipe pipe = {0};

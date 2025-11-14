@@ -2,10 +2,11 @@
 #define STORAGE_H
 
 #include "p2pipe/packet.h"
+#include <bits/pthreadtypes.h>
 #include <stdint.h>
 #include <stdio.h>
 typedef struct {
-    Packet** packets;
+    Packet* packets;
     size_t capacity;
     size_t count;
     bool ready;
@@ -13,6 +14,8 @@ typedef struct {
     FILE* file_out;
     uint32_t next_expected_seq;
     bool stream_data;
+
+    pthread_mutex_t lock;
 } Storage;
 
 bool storage_init(Storage* storage, size_t capacity, const char* dest_path, uint32_t initial_seq);

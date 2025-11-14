@@ -10,6 +10,9 @@
 #define PAYLOAD_SIZE 512 * 2
 #define CAPACITY 25
 
+#undef METRICS_FILE
+#define METRICS_FILE "metrics/metrics.csv"
+
 static inline double timespec_diff_seconds(const struct timespec *start, const struct timespec *end)
 {
     double s = (double)(end->tv_sec - start->tv_sec);

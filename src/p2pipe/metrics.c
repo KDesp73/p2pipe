@@ -92,6 +92,7 @@ void metrics_free(Metrics* metrics)
         free(metrics->id);
         metrics->id = NULL;
     }
+    metrics_reset(metrics);
 }
 
 void metrics_print(const Metrics* metrics)
