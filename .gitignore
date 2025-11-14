@@ -13,7 +13,7 @@ libp2pipe.*
 *.txt
 *.rcv
 logs/
-!metrics/metrics.csv
+!metrics/*.csv
 
 receiver
 sender

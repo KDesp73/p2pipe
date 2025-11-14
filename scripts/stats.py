@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 import csv
+import sys
 from collections import defaultdict
 from statistics import mean
-
 
 def us_to_ms(us):
     return us / 1_000.0
 
-
 def us_to_s(us):
     return us / 1_000_000.0
-
 
 def analyze_metrics(filename):
     results = defaultdict(lambda: {"SND": None, "RCV": None})
@@ -63,37 +61,24 @@ def analyze_metrics(filename):
             (snd["acks_sent"] + rcv["acks_received"]) or 1
         ) * 100
 
-        duplicate_rate = (
-            (snd["packets_duplicate"] + rcv["packets_duplicate"]) /
-            ((rcv["packets_received"]) or 1)
-        ) * 100
-
-        discard_rate = (
-            (snd["packets_discarded"] + rcv["packets_discarded"]) /
-            ((rcv["packets_received"]) or 1)
-        ) * 100
-
-        retransmit_rate = (
-            snd["retransmits"] / (snd["packets_sent"] or 1)
-        ) * 100
-
         summary.append({
             "id": id_,
             "duration_ms": duration_ms,
             "throughput_Bps": throughput,
             "packet_loss_%": loss_rate,
             "ack_loss_%": ack_loss_rate,
-            "duplicate_%": duplicate_rate,
-            "discard_%": discard_rate,
-            "retransmit_%": retransmit_rate,
-            "paused_us": snd["sender_paused"],
+            "duplicate": snd["packets_duplicate"] + rcv["packets_duplicate"],
+            "discard": snd["packets_discarded"] + rcv["packets_discarded"],
+            "retransmit": snd["retransmits"],
+            "paused_ms": us_to_ms(snd["sender_paused"]),
             "payload_len": snd["payload_len"],
         })
 
+    # Print table header
     print(
         f"{'ID':<20} {'Duration(ms)':>12} {'Throughput(B/s)':>18} "
-        f"{'PktLoss(%)':>12} {'AckLoss(%)':>12} {'Dup(%)':>8} "
-        f"{'Disc(%)':>8} {'Retr(%)':>8} {'Paused(µs)':>12} {'Payload':>10}"
+        f"{'PktLoss(%)':>12} {'AckLoss(%)':>12} {'Dup':>8} "
+        f"{'Disc':>8} {'Retr':>8} {'Paused(ms)':>12} {'Payload':>10}"
     )
     print("-" * 120)
     for s in summary:
@@ -103,10 +88,10 @@ def analyze_metrics(filename):
             f"{s['throughput_Bps']:>18.2f} "
             f"{s['packet_loss_%']:>12.2f} "
             f"{s['ack_loss_%']:>12.2f} "
-            f"{s['duplicate_%']:>8.2f} "
-            f"{s['discard_%']:>8.2f} "
-            f"{s['retransmit_%']:>8.2f} "
-            f"{s['paused_us']:>12} "
+            f"{s['duplicate']:>8} "
+            f"{s['discard']:>8} "
+            f"{s['retransmit']:>8} "
+            f"{s['paused_ms']:>12.2f} "
             f"{s['payload_len']:>10}"
         )
 
@@ -116,11 +101,10 @@ def analyze_metrics(filename):
         print(f"Average Throughput: {avg('throughput_Bps'):.2f} B/s")
         print(f"Average Packet Loss: {avg('packet_loss_%'):.2f}%")
         print(f"Average ACK Loss: {avg('ack_loss_%'):.2f}%")
-        print(f"Average Duplicate: {avg('duplicate_%'):.2f}%")
-        print(f"Average Discard: {avg('discard_%'):.2f}%")
-        print(f"Average Retransmit: {avg('retransmit_%'):.2f}%")
-        print(f"Average Sender Paused: {avg('paused_us'):.0f} µs")
-
+        print(f"Average Duplicate: {avg('duplicate'):.2f}")
+        print(f"Average Discard: {avg('discard'):.2f}")
+        print(f"Average Retransmit: {avg('retransmit'):.2f}")
+        print(f"Average Sender Paused: {avg('paused_ms'):.2f} ms")
 
 if __name__ == "__main__":
-    analyze_metrics("metrics.csv")
+    analyze_metrics(sys.argv[1])
