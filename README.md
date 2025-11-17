@@ -73,7 +73,7 @@ p2pipe serve -P 9000
 | -------------------------------- | ---------------------------------------- |
 | `-I <ADDRESS>`, `--ip <ADDRESS>` | Server IP address                        |
 | `-P <PORT>`, `--port <PORT>`     | Server port                              |
-| `-C <N>`, `--capacity <N>`       | Set the internal buffer capacity (bytes) |
+| `-C <N>`, `--capacity <N>`       | Set the internal buffer capacity (packet count) |
 
 
 ### Receiver Options (`listen`)
