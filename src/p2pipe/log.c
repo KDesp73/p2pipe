@@ -1,4 +1,5 @@
 #include "p2pipe/log.h"
+#include <time.h>
 
 
 void logging_set_file(void)

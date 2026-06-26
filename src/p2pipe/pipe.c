@@ -9,7 +9,7 @@
 #include "p2pipe/helpers.h"
 #include "p2pipe/threads.h"
 #include <arpa/inet.h>
-#include <asm-generic/errno.h>
+#include <errno.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -49,37 +49,37 @@ int pipe_rcv_open(Pipe* pipe, const char* ip, size_t port, const char* id, size_
 
 bool pipe_read(Pipe* pipe, size_t n_bytes)
 {
+    (void)n_bytes;
     if (!pipe || pipe->mode != MODE_RCV || pipe->sock_fd < 0) {
         return false;
     }
     if (n_bytes == 0) return true;
 
     pthread_mutex_lock(&pipe->storage_lock);
-
-    while (pipe->storage.count == 0 && pipe->running) {
+    while (pipe->running && !pipe->end_received) {
         INFO("Pipe read blocking: Waiting for data...");
         pthread_cond_wait(&pipe->storage_cond, &pipe->storage_lock);
     }
-    
-    if (!pipe->running && pipe->storage.count == 0) {
-        INFO("Pipe closed during read.");
-        pthread_mutex_unlock(&pipe->storage_lock);
-        return false; 
-    }
-
     pthread_mutex_unlock(&pipe->storage_lock);
-    
-    return true;
+
+    return pipe->end_received;
 }
 
 
 void pipe_rcv_close(Pipe* pipe)
 {
     if (!pipe) return;
-    
-    while(!pipe->end_received) {
-        usleep(1000);
+
+    pthread_mutex_lock(&pipe->storage_lock);
+    while (!pipe->end_received && pipe->running) {
+        pthread_cond_wait(&pipe->storage_cond, &pipe->storage_lock);
     }
+
+    if (!pipe->end_received) {
+        pthread_mutex_unlock(&pipe->storage_lock);
+        return;
+    }
+    pthread_mutex_unlock(&pipe->storage_lock);
 
     if (pipe->sock_fd >= 0) {
         shutdown(pipe->sock_fd, SHUT_RDWR);
@@ -139,8 +139,11 @@ bool pipe_write(Pipe* pipe, void* payload, size_t len)
     uint32_t seq = pipe->seq;
 
     while (offset < len) {
-        if(!pipe->handshake_completed)
-            continue;
+        pthread_mutex_lock(&pipe->handshake_lock);
+        while (!pipe->handshake_completed) {
+            pthread_cond_wait(&pipe->handshake_cond, &pipe->handshake_lock);
+        }
+        pthread_mutex_unlock(&pipe->handshake_lock);
 
         Packet packet = {0};
         packet.signals = SIGNAL_PAYLOAD;

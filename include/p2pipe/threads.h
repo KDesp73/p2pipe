@@ -1,7 +1,7 @@
 #ifndef THREADS_H
 #define THREADS_H
 
-#include <bits/pthreadtypes.h>
+#include <pthread.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

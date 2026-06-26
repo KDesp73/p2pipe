@@ -1,13 +1,13 @@
 #include "futils.h"
 #include "help.h"
-#include "futils.h"
+#include "extern/logging.h"
 #include "p2pipe/log.h"
 #include "p2pipe/metrics.h"
 #include "p2pipe/packet.h"
 #include "p2pipe/storage.h"
 #include "validation.h"
 #include "p2pipe/bootstrap.h"
-#include <bits/getopt_core.h>
+#include <getopt.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,10 +15,9 @@
 #include <unistd.h>
 #define CLI_IMPLEMENTATION
 #include "extern/cli.h"
-#include "extern/logging.h"
-#include "p2pipe/log.h"
 #include "p2pipe/pipe.h"
 #include "p2pipe/version.h"
+#include "p2pipe/helpers.h"
 #include "cli.h"
 
 Metrics metrics;
@@ -203,9 +202,11 @@ int main(int argc, char** argv)
                 goto cleanup;
             case ARG_IP:
                 ctx.ip = strdup(optarg);
+                if (!ctx.ip) { ERRO("Out of memory"); goto error; }
                 break;
             case ARG_ID:
                 ctx.id = strdup(optarg);
+                if (!ctx.id) { ERRO("Out of memory"); goto error; }
                 break;
             case ARG_PORT:
                 if(!validate_int(optarg)) {
@@ -215,17 +216,19 @@ int main(int argc, char** argv)
                 ctx.port = atoi(optarg);
                 break;
             case ARG_CAPACITY:
-                if(!validate_int(optarg) && atoi(optarg) <= 0) {
+                if(!validate_int(optarg) || atoi(optarg) <= 0) {
                     ERRO("Invalid capacity: `%s`", optarg);
                     goto error;
                 }
-                ctx.capacity = atoi(optarg);
+                ctx.capacity = (size_t)atoi(optarg);
                 break;
             case ARG_SRC:
                 ctx.src = strdup(optarg);
+                if (!ctx.src) { ERRO("Out of memory"); goto error; }
                 break;
             case ARG_DST:
                 ctx.dst = strdup(optarg);
+                if (!ctx.dst) { ERRO("Out of memory"); goto error; }
                 break;
             default:
                 goto error;
@@ -251,12 +254,14 @@ int main(int argc, char** argv)
 
 cleanup:
     metrics_free(&metrics);
+    threads_shutdown();
     cli_args_free(&args);
     context_free(&ctx);
     return 0;
 
 error:
     metrics_free(&metrics);
+    threads_shutdown();
     cli_args_free(&args);
     context_free(&ctx);
     return 1;

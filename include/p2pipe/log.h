@@ -11,7 +11,9 @@ static pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 void logging_set_file(void);
 FILE* logging_get_file(void);
 
+#ifdef LOG
 #undef LOG
+#endif
 
 #ifdef DEBUG
 #define LOG(stream, type, format, ...)                                      \

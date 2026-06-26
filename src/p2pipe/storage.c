@@ -183,18 +183,20 @@ void storage_append(Storage* storage, const Packet* packet)
 /**
  * Write any remaining packets (out-of-order leftovers).
  */
-void storage_export(const Storage* storage)
+void storage_export(Storage* storage)
 {
     if (!storage || !storage->file_out)
         return;
+
+    pthread_mutex_lock(&storage->lock);
 
     /* bubble sort — bad but unchanged behavior */
     for (size_t i = 0; i < storage->count; ++i) {
         for (size_t j = i + 1; j < storage->count; ++j) {
             if (storage->packets[i].seq > storage->packets[j].seq) {
                 Packet tmp = storage->packets[i];
-                ((Packet*)storage->packets)[i] = storage->packets[j];
-                ((Packet*)storage->packets)[j] = tmp;
+                storage->packets[i] = storage->packets[j];
+                storage->packets[j] = tmp;
             }
         }
     }
@@ -205,4 +207,6 @@ void storage_export(const Storage* storage)
         if (pkt->len > 0)
             fwrite(pkt->data, 1, pkt->len, storage->file_out);
     }
+
+    pthread_mutex_unlock(&storage->lock);
 }

@@ -38,7 +38,14 @@ void retransmission_thread(void* arg)
     pipe->retransmit_running = true;
     INFO("Retransmission thread started.");
 
-    while (pipe->retransmit_running) {
+    while (true) {
+        pthread_mutex_lock(&pipe->ack_lock);
+        if (!pipe->retransmit_running) {
+            pthread_mutex_unlock(&pipe->ack_lock);
+            break;
+        }
+        pthread_mutex_unlock(&pipe->ack_lock);
+
         usleep(RETRANSMISSION_TIMEOUT_MS * 1000 / 2);
 
         pthread_mutex_lock(&pipe->ack_lock);
@@ -47,9 +54,9 @@ void retransmission_thread(void* arg)
             long long now = current_time_ms();
             size_t retransmitted_count = 0;
             
-            for (size_t i = 0; i < pipe->buffer.capacity; i++) {
+            for (size_t i = 0; i < pipe->buffer.count; i++) {
                 Packet* pkt = &pipe->buffer.items[i];
-                if (pkt != NULL && (now - pkt->last_sent_ms > RETRANSMISSION_TIMEOUT_MS)) {
+                if (now - pkt->last_sent_ms > RETRANSMISSION_TIMEOUT_MS) {
                     INFO("Retransmitting packet #%u (Timeout: %lldms).", pkt->seq, now - pkt->last_sent_ms);
                     if (pipe_write_packet_async(pipe, pkt, NULL)) {
                         pkt->last_sent_ms = now;
@@ -189,6 +196,10 @@ void recv_job_fn(void *arg)
         }
     }
 
+    if (pipe->onread) {
+        pipe->onread(r);
+    }
+
     free(packet);
     free(r);
 }
@@ -222,6 +233,43 @@ bool pipe_write_packet_sync(Pipe* pipe, const Packet* packet, struct sockaddr_in
     return true;
 }
 
+static void send_job_with_onwrite_fn(void *arg)
+{
+    SendJob *job = (SendJob*)arg;
+    if (!job) return;
+
+    uint8_t buf[sizeof(Packet)];
+    size_t len = packet_serialize(&job->packet, buf, sizeof(buf));
+    if (len == 0) {
+        ERRO("Failed to serialize packet (Type: %s, Seq: %u).",
+             (job->packet.signals & SIGNAL_ACK) ? "ACK" : "DATA/END", job->packet.seq);
+        free(job);
+        return;
+    }
+
+    ssize_t sent = sendto(job->sock_fd, buf, len, 0,
+                          (struct sockaddr*)&job->peer, sizeof(job->peer));
+
+    const char *type = (job->packet.signals & SIGNAL_ACK) ? "ACK" :
+                       (job->packet.signals & SIGNAL_END) ? "END" : "DATA";
+
+    if (sent != (ssize_t)len) {
+        WARN("Failed to send %s #%u (%zu bytes). Error: %s",
+             type, job->packet.seq, len, strerror(errno));
+    } else {
+        if(job->packet.signals & SIGNAL_ACK) { METRICS_INCR(acks_sent); }
+        else { METRICS_INCR(packets_sent); }
+        INFO("%s packet #%u (%zu bytes) sent successfully to peer.",
+             type, job->packet.seq, sent);
+    }
+
+    if (job->pipe && job->pipe->onwrite) {
+        job->pipe->onwrite(job);
+    }
+
+    free(job);
+}
+
 bool pipe_write_packet_async(Pipe* pipe, const Packet* packet, struct sockaddr_in *dest)
 {
     if (!tp) {
@@ -237,17 +285,12 @@ bool pipe_write_packet_async(Pipe* pipe, const Packet* packet, struct sockaddr_i
     memcpy(&sj->packet, packet, sizeof(Packet));
     sj->pipe = pipe;
 
-    if (!thread_pool_submit(tp, send_job_fn, sj)) {
+    TPTaskFn fn = pipe->onwrite ? send_job_with_onwrite_fn : send_job_fn;
+    if (!thread_pool_submit(tp, fn, sj)) {
         free(sj);
         return false;
     }
 
-    if(pipe->onwrite){
-        if (!thread_pool_submit(tp, pipe->onwrite, sj)) {
-            free(sj);
-            return false;
-        }
-    }
     return true;
 }
 
@@ -291,6 +334,24 @@ void pipe_init(Pipe* pipe, size_t capacity)
         return;
     }
 
+    if (pthread_mutex_init(&pipe->handshake_lock, NULL) != 0) {
+        ERRO("Failed to init mutex");
+        pthread_cond_destroy(&pipe->storage_cond);
+        pthread_mutex_destroy(&pipe->storage_lock);
+        pthread_mutex_destroy(&pipe->ack_lock);
+        buffer_free(&pipe->buffer);
+        return;
+    }
+    if (pthread_cond_init(&pipe->handshake_cond, NULL) != 0) {
+        ERRO("Failed to init condition variable");
+        pthread_mutex_destroy(&pipe->handshake_lock);
+        pthread_cond_destroy(&pipe->storage_cond);
+        pthread_mutex_destroy(&pipe->storage_lock);
+        pthread_mutex_destroy(&pipe->ack_lock);
+        buffer_free(&pipe->buffer);
+        return;
+    }
+
     if (!threads_init()) {
         ERRO("Failed to init threads");
         pthread_cond_destroy(&pipe->ack_cond);
@@ -316,8 +377,8 @@ void pipe_free(Pipe* pipe)
     pthread_mutex_destroy(&pipe->ack_lock);
     pthread_cond_destroy(&pipe->storage_cond);
     pthread_mutex_destroy(&pipe->storage_lock);
-
-    threads_shutdown();
+    pthread_cond_destroy(&pipe->handshake_cond);
+    pthread_mutex_destroy(&pipe->handshake_lock);
 }
 
 static void process_ack(Pipe* pipe, const Packet* packet)
@@ -349,7 +410,10 @@ static void process_handshake(Pipe* pipe, const Packet* packet)
         return;
     }
 
+    pthread_mutex_lock(&pipe->handshake_lock);
     pipe->handshake_completed = true;
+    pthread_cond_broadcast(&pipe->handshake_cond);
+    pthread_mutex_unlock(&pipe->handshake_lock);
 
     INFO("Handshake completed");
 }
@@ -439,18 +503,12 @@ void packet_listener(void* arg)
             continue;
         }
 
-        if(pipe->onread) {
-            if(!thread_pool_submit(tp, pipe->onread, job)) {
-                WARN("Failed to submit pipe->onread for packet #%u to TP. Running inline.", seq_num);
-                pipe->onread(job);
-                continue;
-            }
-        }
-
+        char src_ip[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &src_addr.sin_addr, src_ip, sizeof(src_ip));
         INFO("Queued data packet #%u (%u bytes) from %s:%d.",
              seq_num,
              pkt_len,
-             inet_ntoa(src_addr.sin_addr),
+             src_ip,
              ntohs(src_addr.sin_port));
     }
 

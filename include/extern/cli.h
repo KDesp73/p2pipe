@@ -32,7 +32,7 @@ typedef struct {
 } cli_args_t;
 
 #define LOOP_ARGS(opt, args) \
-    char fmt[128]; \
+    char fmt[1024]; \
     cli_generate_format_string(fmt, args); \
     struct option opts[args.count]; \
     cli_args_to_options(opts, args); \
@@ -206,23 +206,22 @@ CLIAPI void cli_help(cli_args_t args, const char* usage, const char* footer)
 
 CLIAPI void cli_generate_format_string(char* buffer, cli_args_t args)
 {
-    size_t length = 1;
-    for (size_t i = 0; i < args.count; ++i) {
-        length += 1;
+    buffer[0] = '\0';
+    size_t remaining = 1024;
+
+    for (size_t i = 0; i < args.count && remaining > 1; ++i) {
+        if(args.args[i]->argument_required == optional_argument) {
+            strncat(buffer, ":", remaining - 1);
+            remaining--;
+        }
+        char abr[2] = {args.args[i]->abr, 0};
+        strncat(buffer, abr, remaining - 1);
+        remaining--;
         if (args.args[i]->argument_required) {
-            length += 1;
+            strncat(buffer, ":", remaining - 1);
+            remaining--;
         }
     }
-
-    buffer[0] = '\0';
-
-    for (size_t i = 0; i < args.count; ++i) {
-        char abr[2] = {args.args[i]->abr, 0};
-        if(args.args[i]->argument_required == optional_argument) strcat(buffer, ":");
-        strcat(buffer, abr);
-        if (args.args[i]->argument_required) strcat(buffer, ":");
-    }
-    strcat(buffer, "\0");
 }
 
 #endif // CLI_IMPLEMENTATION

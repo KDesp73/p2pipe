@@ -45,7 +45,7 @@ void help()
 void serve_help()
 {
     PTN("%sUSAGE%s", ANSI_BOLD, ANSI_RESET);
-    PTNI("p2p serve <OPTIONS>...");
+    PTNI("p2pipe serve <OPTIONS>...");
     PTN(" ");
 
     PTN("%sOPTIONS%s", ANSI_BOLD, ANSI_RESET);
@@ -55,7 +55,7 @@ void serve_help()
 
 #define client_help(cmd) \
     PTN("%sUSAGE%s", ANSI_BOLD, ANSI_RESET); \
-    PTNI("p2p %s <OPTIONS>...", cmd); \
+    PTNI("p2pipe %s <OPTIONS>...", cmd); \
     PTN(" "); \
     PTN("%sOPTIONS%s", ANSI_BOLD, ANSI_RESET); \
     PTNI("-h --help         Prints this message"); \

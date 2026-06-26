@@ -2,7 +2,7 @@
 #define STORAGE_H
 
 #include "p2pipe/packet.h"
-#include <bits/pthreadtypes.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 typedef struct {
@@ -22,6 +22,6 @@ bool storage_init(Storage* storage, size_t capacity, const char* dest_path, uint
 void storage_free(Storage* storage);
 void storage_append(Storage* storage, const Packet* packet);
 void storage_resize(Storage* storage, size_t capacity);
-void storage_export(const Storage* storage);
+void storage_export(Storage* storage);
 
 #endif // STORAGE_H

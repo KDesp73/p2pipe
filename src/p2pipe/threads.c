@@ -28,6 +28,7 @@ static void *worker_main(void *vpool)
         p->head = t->next;
         if (!p->head) p->tail = NULL;
         p->task_count--;
+        pthread_cond_signal(&p->cond);
         pthread_mutex_unlock(&p->lock);
 
         t->fn(t->arg);
@@ -98,9 +99,7 @@ void thread_pool_wait(ThreadPool *p)
 
     pthread_mutex_lock(&p->lock);
     while (p->task_count > 0) {
-        pthread_mutex_unlock(&p->lock);
-        sched_yield();
-        pthread_mutex_lock(&p->lock);
+        pthread_cond_wait(&p->cond, &p->lock);
     }
     pthread_mutex_unlock(&p->lock);
 }

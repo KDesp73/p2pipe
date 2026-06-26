@@ -82,8 +82,20 @@ int server(int port) {
     printf("[INFO] Bootstrap server listening on port %d\n", port);
 
     char buf[BUFSIZE];
+    time_t last_cleanup = time(NULL);
 
     for (;;) {
+        time_t now = time(NULL);
+        if (now - last_cleanup > 30) {
+            last_cleanup = now;
+            for (int i = 0; i < MAX_SESSIONS; ++i) {
+                if (sessions[i].id[0] != '\0' && now - sessions[i].last_activity > 60) {
+                    printf(" -> removing stale session ID=%s\n", sessions[i].id);
+                    remove_session(&sessions[i]);
+                }
+            }
+        }
+
         struct sockaddr_in cli;
         socklen_t clen = sizeof(cli);
         ssize_t n = recvfrom(sock, buf, sizeof(buf) - 1, 0, (struct sockaddr*)&cli, &clen);

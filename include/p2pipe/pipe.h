@@ -38,6 +38,9 @@ typedef struct {
     pthread_mutex_t storage_lock;
     pthread_cond_t storage_cond;
 
+    pthread_mutex_t handshake_lock;
+    pthread_cond_t handshake_cond;
+
     TPTaskFn onread;
     TPTaskFn onwrite;
 } Pipe;
