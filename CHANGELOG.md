@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.2.0] - 2026-06-26 
+
+### Fixed
+
+- Replace busy-wait spinlock in pipe_write with proper pthread_cond_wait on new handshake_cond
+- Bound retransmission loop to buffer.count instead of buffer.capacity to avoid reading uninitialized packet slots
+- Fix negative capacity validation (&& -> ||) to prevent SIZE_MAX allocation
+- Add mutex lock to storage_export and change signature from `const Storage*` to `Storage*`
+- Fix use-after-free/double-free in pipe_write_packet_async and packet_listener
+- Replace non-portable Linux-internal headers (bits/getopt_core.h, bits/pthreadtypes.h, asm-generic/errno.h) with standard equivalents
+- Fix pipe_read to actually wait for end_received; add proper pipe_rcv_close wait using condition variable instead of usleep
+- Replace inet_ntoa with inet_ntop for thread safety
+- Add session timeout cleanup (60s idle) to bootstrap server
+- Add NULL checks for all strdup calls in main.c
+- Fix help text displaying "p2p" instead of "p2pipe"
+- Add missing #include <time.h> in log.c
+- Replace thread_pool_wait sched_yield busy-loop with condition variable (add signal in worker_main on task completion)
+- Add bounds checking to cli_generate_format_string and increase format buffer from 128 to 1024
+
+
 ## [1.1.0] - 2025-11-17 
 
 ### Added
@@ -28,17 +48,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Using session id
 - Written Specification.md
 - Completed metrics setup
 - Added optional onread/onwrite handlers
 - Added metrics.py script
-- Using session id
 - Logging to file
 
 ### Changed
 
-- Using VERSION= instead of PROTO=
 - Bumped version
+- Using VERSION= instead of PROTO=
 
 
 ## [0.3.0] - 2025-11-06 
@@ -65,9 +85,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Multithreaded operations
 - Sending / Receiving acks
 - Flush
-- Multithreaded operations
 
 ### Changed
 
@@ -99,10 +119,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Sending and receiving payloads in packets
 
 
-[0.1.0]: https://github.com/KDesp73/p2pipe/releases/tag/v0.1.0
-[0.1.1]: https://github.com/KDesp73/p2pipe/releases/tag/v0.1.1
-[0.2.0]: https://github.com/KDesp73/p2pipe/releases/tag/v0.2.0
-[0.3.0]: https://github.com/KDesp73/p2pipe/releases/tag/v0.3.0
-[1.0.0]: https://github.com/KDesp73/p2pipe/releases/tag/v1.0.0
-[1.1.0]: https://github.com/KDesp73/p2pipe/releases/tag/v1.1.0
+[0.1.0]: https://github.com/KDesp73/p2pipe//releases/tag/v0.1.0
+[0.1.1]: https://github.com/KDesp73/p2pipe//releases/tag/v0.1.1
+[0.2.0]: https://github.com/KDesp73/p2pipe//releases/tag/v0.2.0
+[0.3.0]: https://github.com/KDesp73/p2pipe//releases/tag/v0.3.0
+[1.0.0]: https://github.com/KDesp73/p2pipe//releases/tag/v1.0.0
+[1.1.0]: https://github.com/KDesp73/p2pipe//releases/tag/v1.1.0
+[1.2.0]: https://github.com/KDesp73/p2pipe//releases/tag/v1.2.0
 
